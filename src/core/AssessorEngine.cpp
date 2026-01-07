@@ -197,20 +197,38 @@ void AssessorEngine::beginBLEScan() {
     }
 
     m_targetTable.clear();  // Clear previous targets
-    m_scanState = ScanState::BLE_SCANNING;
     m_scanProgress = 0;
     m_scanStartMs = millis();
     m_combinedScan = false;  // BLE only
 
+    yield();  // Feed watchdog before BLE init
+
     BruceBLE& ble = BruceBLE::getInstance();
-    if (!ble.init()) {
+
+    // Try to init BLE with retries
+    bool bleInitOk = false;
+    for (int attempt = 0; attempt < 2; attempt++) {
+        yield();
+        bleInitOk = ble.init();
+        if (bleInitOk) break;
+
         if (Serial) {
-            Serial.println("[BLE] Init failed!");
+            Serial.printf("[BLE] Init attempt %d failed\n", attempt + 1);
+        }
+        delay(100);
+        yield();
+    }
+
+    if (!bleInitOk) {
+        if (Serial) {
+            Serial.println("[BLE] Init failed after retries!");
         }
         m_scanState = ScanState::COMPLETE;
         m_scanProgress = 100;
         return;
     }
+
+    m_scanState = ScanState::BLE_SCANNING;
     ble.beginScan(5000);  // 5 second scan
 
     if (m_onScanProgress) {
@@ -249,22 +267,22 @@ void AssessorEngine::processScanResults(int count) {
     for (int i = 0; i < count; i++) {
         Target target;
         memset(&target, 0, sizeof(Target));
-        
+
         // Get BSSID
         uint8_t* bssid = WiFi.BSSID(i);
         if (bssid) {
             memcpy(target.bssid, bssid, 6);
         }
-        
+
         // Get SSID
         String ssid = WiFi.SSID(i);
         strncpy(target.ssid, ssid.c_str(), SSID_MAX_LEN);
         target.ssid[SSID_MAX_LEN] = '\0';
-        
+
         target.type = TargetType::ACCESS_POINT;
         target.channel = WiFi.channel(i);
         target.rssi = WiFi.RSSI(i);
-        
+
         // Map encryption
         wifi_auth_mode_t enc = WiFi.encryptionType(i);
         switch (enc) {
@@ -290,17 +308,17 @@ void AssessorEngine::processScanResults(int count) {
             default:
                 target.security = SecurityType::UNKNOWN;
         }
-        
+
         target.isHidden = (strlen(target.ssid) == 0);
         if (target.isHidden) {
             strcpy(target.ssid, "[Hidden]");
         }
-        
+
         target.firstSeenMs = millis();
         target.lastSeenMs = millis();
         target.beaconCount = 1;
         target.clientCount = 0;
-        
+
         m_targetTable.addOrUpdate(target);
     }
 
@@ -312,11 +330,31 @@ void AssessorEngine::processScanResults(int count) {
             Serial.println("[Scan] WiFi done, starting BLE scan...");
         }
 
+        // Give WiFi hardware time to release before BLE init
+        yield();
+        delay(100);
+        yield();
+
         BruceBLE& ble = BruceBLE::getInstance();
-        if (!ble.init()) {
-            // BLE init failed, skip BLE scan
+        bool bleInitOk = false;
+
+        // Try BLE init with error recovery
+        for (int attempt = 0; attempt < 2; attempt++) {
+            yield();
+            bleInitOk = ble.init();
+            if (bleInitOk) break;
+
             if (Serial) {
-                Serial.println("[Scan] BLE init failed, skipping");
+                Serial.printf("[Scan] BLE init attempt %d failed\n", attempt + 1);
+            }
+            delay(100);
+            yield();
+        }
+
+        if (!bleInitOk) {
+            // BLE init failed, skip BLE scan but don't crash
+            if (Serial) {
+                Serial.println("[Scan] BLE init failed, completing without BLE");
             }
             m_scanState = ScanState::COMPLETE;
             m_scanProgress = 100;

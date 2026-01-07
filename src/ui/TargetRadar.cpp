@@ -78,9 +78,9 @@ void TargetRadar::render() {
     // Header
     m_canvas->fillRect(0, 0, Theme::SCREEN_WIDTH, HEADER_HEIGHT, Theme::COLOR_SURFACE);
     m_canvas->setTextSize(1);
-    m_canvas->setTextColor(Theme::COLOR_TEXT_PRIMARY);
+    m_canvas->setTextColor(Theme::COLOR_ACCENT);
     m_canvas->setTextDatum(TL_DATUM);
-    m_canvas->drawString("TARGET RADAR", 4, 3);
+    m_canvas->drawString("VELORA RADAR", 4, 3);
 
     // Count WiFi and BLE targets
     int wifiCount = 0, bleCount = 0;

@@ -47,17 +47,34 @@ BruceBLE::~BruceBLE() {
 bool BruceBLE::init() {
     if (m_initialized) return true;
 
-    // Initialize NimBLE
-    NimBLEDevice::init("Assessor");
+    yield();  // Feed watchdog
+
+    // Check if NimBLE is already initialized
+    if (NimBLEDevice::getInitialized()) {
+        // Already initialized, just get the handles
+        if (Serial) {
+            Serial.println("[BLE] Already initialized, reusing");
+        }
+    } else {
+        // Initialize NimBLE fresh
+        NimBLEDevice::init("Velora");
+    }
+
+    yield();  // Feed watchdog
 
     // Get scanner
     m_scanner = NimBLEDevice::getScan();
     if (!m_scanner) {
+        if (Serial) {
+            Serial.println("[BLE] Failed to get scanner");
+        }
         return false;
     }
 
-    // Create and set scan callbacks
-    m_scanCallbacks = new ScanCallbacks(this);
+    // Create and set scan callbacks (only if not already set)
+    if (!m_scanCallbacks) {
+        m_scanCallbacks = new ScanCallbacks(this);
+    }
     m_scanner->setAdvertisedDeviceCallbacks(m_scanCallbacks);
 
     // Configure scanner
@@ -81,16 +98,10 @@ bool BruceBLE::init() {
 void BruceBLE::shutdown() {
     stopAttack();
 
-    if (m_scanCallbacks) {
-        delete m_scanCallbacks;
-        m_scanCallbacks = nullptr;
-    }
+    // Don't delete callbacks - they may be reused
+    // Don't deinit NimBLE - it causes issues on reinit
 
-    if (m_initialized) {
-        NimBLEDevice::deinit(true);
-        m_initialized = false;
-    }
-
+    m_initialized = false;
     m_scanner = nullptr;
     m_advertising = nullptr;
     m_state = BLEAdapterState::IDLE;

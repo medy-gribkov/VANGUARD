@@ -1,6 +1,7 @@
 /**
  * @file ScanSelector.cpp
- * @brief Post-boot scan type selection screen - ORANGE THEMED
+ * @brief Velora - Post-boot scan type selection screen
+ * PINKISH-ORANGE THEME
  */
 
 #include "ScanSelector.h"
@@ -43,7 +44,6 @@ bool ScanSelector::isVisible() const {
 }
 
 void ScanSelector::tick() {
-    // Animation tick
     uint32_t now = millis();
     if (now - m_lastRenderMs >= ANIM_INTERVAL_MS) {
         m_animFrame++;
@@ -64,60 +64,68 @@ void ScanSelector::render() {
     // Dark background
     m_canvas->fillScreen(Theme::COLOR_BACKGROUND);
 
-    // Orange accent bar at top
-    m_canvas->fillRect(0, 0, Theme::SCREEN_WIDTH, 3, Theme::COLOR_ACCENT);
+    // Coral/pink accent bar at top
+    m_canvas->fillRect(0, 0, Theme::SCREEN_WIDTH, 4, Theme::COLOR_ACCENT);
 
-    // Title - BIG and ORANGE
+    // Draw a simple pixel "V" logo
+    int16_t logoX = Theme::SCREEN_WIDTH / 2 - 12;
+    int16_t logoY = 10;
+    // V shape in coral
+    for (int i = 0; i < 8; i++) {
+        m_canvas->drawPixel(logoX + i, logoY + i, Theme::COLOR_ACCENT);
+        m_canvas->drawPixel(logoX + i + 1, logoY + i, Theme::COLOR_ACCENT);
+        m_canvas->drawPixel(logoX + 24 - i, logoY + i, Theme::COLOR_ACCENT);
+        m_canvas->drawPixel(logoX + 23 - i, logoY + i, Theme::COLOR_ACCENT);
+    }
+
+    // Title - VELORA in coral
     m_canvas->setTextSize(2);
     m_canvas->setTextColor(Theme::COLOR_ACCENT);
     m_canvas->setTextDatum(TC_DATUM);
-    m_canvas->drawString("THE ASSESSOR", Theme::SCREEN_WIDTH / 2, 12);
+    m_canvas->drawString("VELORA", Theme::SCREEN_WIDTH / 2, 22);
 
     // Subtitle with blinking cursor
     m_canvas->setTextSize(1);
     m_canvas->setTextColor(Theme::COLOR_TEXT_SECONDARY);
     const char* subtitle = (m_animFrame % 2 == 0) ? "Target First. Always." : "Target First. Always._";
-    m_canvas->drawString(subtitle, Theme::SCREEN_WIDTH / 2, 32);
+    m_canvas->drawString(subtitle, Theme::SCREEN_WIDTH / 2, 42);
 
-    // Orange separator line
-    m_canvas->drawFastHLine(30, 44, Theme::SCREEN_WIDTH - 60, Theme::COLOR_ACCENT);
+    // Coral separator
+    m_canvas->drawFastHLine(40, 52, Theme::SCREEN_WIDTH - 80, Theme::COLOR_ACCENT);
 
-    // Scan options - ALL ORANGE THEMED
-    int16_t optionY = 54;
-    int16_t optionSpacing = 24;
+    // Scan options
+    int16_t optionY = 62;
+    int16_t optionSpacing = 22;
 
-    // WiFi option
-    drawOption(optionY, "R", "Scan WiFi Networks", Theme::COLOR_ACCENT);
+    drawOption(optionY, "R", "WiFi Scan", Theme::COLOR_ACCENT);
     optionY += optionSpacing;
 
-    // BLE option
-    drawOption(optionY, "B", "Scan Bluetooth", Theme::COLOR_ACCENT);
+    drawOption(optionY, "B", "Bluetooth Scan", Theme::COLOR_ACCENT);
     optionY += optionSpacing;
 
-    // Both option - highlighted differently
-    drawOption(optionY, "OK", "Scan Everything", Theme::COLOR_ACCENT);
+    drawOption(optionY, "OK", "Full Scan", Theme::COLOR_ACCENT_BRIGHT);
 
-    // Footer with orange accent
-    m_canvas->fillRect(0, Theme::SCREEN_HEIGHT - 12, Theme::SCREEN_WIDTH, 12, Theme::COLOR_SURFACE);
+    // Footer
+    m_canvas->fillRect(0, Theme::SCREEN_HEIGHT - 14, Theme::SCREEN_WIDTH, 14, Theme::COLOR_SURFACE);
+    m_canvas->drawFastHLine(0, Theme::SCREEN_HEIGHT - 14, Theme::SCREEN_WIDTH, Theme::COLOR_ACCENT_DIM);
     m_canvas->setTextSize(1);
     m_canvas->setTextColor(Theme::COLOR_ACCENT);
     m_canvas->setTextDatum(MC_DATUM);
-    m_canvas->drawString("[M] Menu", Theme::SCREEN_WIDTH / 2, Theme::SCREEN_HEIGHT - 6);
+    m_canvas->drawString("[M] Menu", Theme::SCREEN_WIDTH / 2, Theme::SCREEN_HEIGHT - 7);
 
     m_canvas->pushSprite(0, 0);
 }
 
 void ScanSelector::drawOption(int16_t y, const char* key, const char* label, uint16_t keyColor) {
-    // Key box - orange border
-    int16_t keyBoxX = 20;
-    int16_t keyBoxW = (strlen(key) > 1) ? 24 : 16;
+    int16_t keyBoxX = 30;
+    int16_t keyBoxW = (strlen(key) > 1) ? 24 : 18;
     int16_t keyBoxH = 16;
 
-    // Orange bordered box
+    // Coral bordered box
     m_canvas->fillRoundRect(keyBoxX, y, keyBoxW, keyBoxH, 3, Theme::COLOR_SURFACE);
     m_canvas->drawRoundRect(keyBoxX, y, keyBoxW, keyBoxH, 3, keyColor);
 
-    // Key text in orange
+    // Key text in coral
     m_canvas->setTextSize(1);
     m_canvas->setTextColor(keyColor);
     m_canvas->setTextDatum(MC_DATUM);

@@ -135,29 +135,58 @@ void BootSequence::renderFadeOut() {
 
 void BootSequence::drawLogo(uint8_t alpha) {
     int16_t centerX = Theme::SCREEN_WIDTH / 2;
-    int16_t y = 40;
+    int16_t y = 30;
 
-    uint16_t color = Theme::rgb(alpha, alpha, alpha);
+    // Draw pixel "V" logo in coral
+    uint8_t r = (alpha * 255) / 255;
+    uint8_t g = (alpha * 109) / 255;
+    uint8_t b = (alpha * 85) / 255;
+    uint16_t logoColor = Theme::rgb(r, g, b);
 
+    int16_t logoX = centerX - 16;
+    int16_t logoY = y - 12;
+
+    // Draw a stylized V with thick lines
+    for (int i = 0; i < 12; i++) {
+        // Left side of V
+        M5Cardputer.Display.drawPixel(logoX + i, logoY + i, logoColor);
+        M5Cardputer.Display.drawPixel(logoX + i + 1, logoY + i, logoColor);
+        M5Cardputer.Display.drawPixel(logoX + i, logoY + i + 1, logoColor);
+        M5Cardputer.Display.drawPixel(logoX + i + 1, logoY + i + 1, logoColor);
+        // Right side of V
+        M5Cardputer.Display.drawPixel(logoX + 32 - i, logoY + i, logoColor);
+        M5Cardputer.Display.drawPixel(logoX + 31 - i, logoY + i, logoColor);
+        M5Cardputer.Display.drawPixel(logoX + 32 - i, logoY + i + 1, logoColor);
+        M5Cardputer.Display.drawPixel(logoX + 31 - i, logoY + i + 1, logoColor);
+    }
+
+    // "VELORA" text in coral
     M5Cardputer.Display.setTextSize(2);
-    M5Cardputer.Display.setTextColor(color, Theme::COLOR_BACKGROUND);
+    M5Cardputer.Display.setTextColor(logoColor, Theme::COLOR_BACKGROUND);
     M5Cardputer.Display.setTextDatum(MC_DATUM);
-    M5Cardputer.Display.drawString("THE ASSESSOR", centerX, y);
+    M5Cardputer.Display.drawString("VELORA", centerX, y + 22);
 }
 
 void BootSequence::drawTagline(uint8_t alpha) {
     int16_t centerX = Theme::SCREEN_WIDTH / 2;
-    int16_t y = 70;
+    int16_t y = 80;
 
-    uint8_t r = (alpha * 0) / 255;
-    uint8_t g = (alpha * 200) / 255;
-    uint8_t b = (alpha * 200) / 255;
+    // Coral/pink tagline
+    uint8_t r = (alpha * 200) / 255;
+    uint8_t g = (alpha * 150) / 255;
+    uint8_t b = (alpha * 130) / 255;
     uint16_t color = Theme::rgb(r, g, b);
 
     M5Cardputer.Display.setTextSize(1);
     M5Cardputer.Display.setTextColor(color, Theme::COLOR_BACKGROUND);
     M5Cardputer.Display.setTextDatum(MC_DATUM);
     M5Cardputer.Display.drawString("Target First. Always.", centerX, y);
+
+    // Version hint (dim)
+    uint8_t dimAlpha = alpha / 3;
+    uint16_t dimColor = Theme::rgb(dimAlpha, dimAlpha, dimAlpha);
+    M5Cardputer.Display.setTextColor(dimColor, Theme::COLOR_BACKGROUND);
+    M5Cardputer.Display.drawString("v0.2", centerX, y + 20);
 }
 
 void BootSequence::drawOnboardingCard() {

@@ -22,12 +22,23 @@ TargetDetail::TargetDetail(AssessorEngine& engine, const Target& target)
     , m_canvas(nullptr)
     , m_lastRenderMs(0)
 {
+    yield();  // Feed watchdog before potentially slow operations
+
     // Get available actions for this target
     m_actions = m_engine.getActionsFor(target);
 
+    yield();  // Feed watchdog
+
     // Create sprite for double buffering
     m_canvas = new M5Canvas(&M5Cardputer.Display);
-    m_canvas->createSprite(Theme::SCREEN_WIDTH, Theme::SCREEN_HEIGHT);
+    if (m_canvas) {
+        m_canvas->createSprite(Theme::SCREEN_WIDTH, Theme::SCREEN_HEIGHT);
+    }
+
+    if (Serial) {
+        Serial.printf("[Detail] Created for target '%s' with %d actions\n",
+                      target.ssid, (int)m_actions.size());
+    }
 }
 
 TargetDetail::~TargetDetail() {
@@ -60,6 +71,8 @@ void TargetDetail::tick() {
 }
 
 void TargetDetail::render() {
+    if (!m_canvas) return;
+
     // Frame rate limiting
     uint32_t now = millis();
     if ((now - m_lastRenderMs) < RENDER_INTERVAL_MS) {

@@ -251,8 +251,20 @@ void loop() {
             break;
 
         case AppState::SETTINGS:
-            g_settings->tick();
-            g_settings->render();
+            if (g_settings) {
+                g_settings->tick();
+                g_settings->render();
+
+                // Check if settings wants to go back
+                if (g_settings->wantsBack()) {
+                    g_settings->clearBack();
+                    g_settings->hide();
+                    g_state = AppState::RADAR;
+                }
+            } else {
+                // Settings failed to initialize, go back
+                g_state = AppState::RADAR;
+            }
             break;
 
         case AppState::ERROR:

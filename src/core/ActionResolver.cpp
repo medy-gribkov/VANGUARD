@@ -252,17 +252,17 @@ bool ActionResolver::isImplemented(ActionType action) const {
         case ActionType::DEAUTH_ALL:
         case ActionType::DEAUTH_SINGLE:
         case ActionType::BEACON_FLOOD:
+        case ActionType::EVIL_TWIN:          // Basic soft AP implemented
         case ActionType::BLE_SPAM:
         case ActionType::BLE_SOUR_APPLE:
             return true;
 
         // NOT IMPLEMENTED - don't show to user
-        case ActionType::MONITOR:           // Not routed
-        case ActionType::EVIL_TWIN:         // Stub returns false
-        case ActionType::CAPTURE_PMKID:     // Not routed
-        case ActionType::CAPTURE_HANDSHAKE: // Partial, detection missing
-        case ActionType::PROBE_FLOOD:       // Not implemented
-        case ActionType::BLE_SKIMMER_DETECT:// Not implemented
+        case ActionType::MONITOR:            // Not routed
+        case ActionType::CAPTURE_PMKID:      // Not routed
+        case ActionType::CAPTURE_HANDSHAKE:  // Partial, detection missing
+        case ActionType::PROBE_FLOOD:        // Not implemented
+        case ActionType::BLE_SKIMMER_DETECT: // Not implemented
         default:
             return false;
     }

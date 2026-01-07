@@ -119,7 +119,7 @@ void SettingsPanel::render() {
     m_canvas->setTextSize(1);
     m_canvas->setTextColor(Theme::COLOR_ACCENT);
     m_canvas->setTextDatum(TL_DATUM);
-    m_canvas->drawString("SETTINGS", 4, 3);
+    m_canvas->drawString("VELORA SETTINGS", 4, 3);
 
     // Settings list
     int16_t y = HEADER_HEIGHT + 2;

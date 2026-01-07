@@ -88,51 +88,30 @@ void AssessorEngine::shutdown() {
 }
 
 void AssessorEngine::tick() {
-    // Handle WiFi scanning
-    if (m_scanState == ScanState::WIFI_SCANNING) {
-        int result = WiFi.scanComplete();
+    // WiFi scanning is now SYNCHRONOUS - no tick needed
+    // (scan completes in beginScan/beginWiFiScan before returning)
 
-        if (result >= 0) {
-            // Scan done - process results
-            if (Serial) {
-                Serial.printf("[WiFi] Scan complete: %d networks found\n", result);
-            }
-            processScanResults(result);
-        }
-        else if (result == WIFI_SCAN_FAILED) {
-            // Scan failed - mark complete with 0 results
-            if (Serial) {
-                Serial.println("[WiFi] Scan FAILED!");
-            }
-            m_scanState = ScanState::COMPLETE;
-            m_scanProgress = 100;
-        }
-        else {
-            // Still scanning - update progress (scan takes ~3-5 seconds)
-            uint32_t elapsed = millis() - m_scanStartMs;
-            m_scanProgress = min(95, (int)(elapsed / 50));  // Max 95% until done
-        }
-    }
-
-    // Handle BLE scanning
+    // Handle BLE scanning (still async via NimBLE)
     if (m_scanState == ScanState::BLE_SCANNING) {
         BruceBLE& ble = BruceBLE::getInstance();
         ble.tick();
 
         // Safety timeout - if BLE scan takes too long, force complete
         uint32_t elapsed = millis() - m_scanStartMs;
-        bool timedOut = elapsed > 5000;  // 5 second max
+        bool timedOut = elapsed > 6000;  // 6 second max
 
         if (ble.isScanComplete() || timedOut) {
             if (timedOut && Serial) {
                 Serial.println("[BLE] Scan timed out, forcing complete");
             }
+            // Force stop the scanner
+            ble.stopScan();
             // Process BLE results into targets
             processBLEScanResults();
         }
         else {
             // Update progress - BLE is 50-100% if combined, 0-100% if standalone
-            int bleProgress = min(95, (int)(elapsed / 30));  // 3 sec scan
+            int bleProgress = min(95, (int)(elapsed / 50));
             if (m_combinedScan) {
                 m_scanProgress = 50 + (bleProgress / 2);  // 50-97%
             } else {
@@ -152,31 +131,10 @@ void AssessorEngine::tick() {
 // =============================================================================
 
 void AssessorEngine::beginScan() {
-    if (!m_initialized) {
-        init();
-    }
-
     if (Serial) {
-        Serial.println("[Scan] Starting combined WiFi+BLE scan...");
+        Serial.println("[Scan] === BEGIN COMBINED SCAN ===");
     }
 
-    m_targetTable.clear();
-    m_scanState = ScanState::WIFI_SCANNING;
-    m_scanProgress = 0;
-    m_scanStartMs = millis();
-    m_combinedScan = true;  // Will chain to BLE after WiFi
-
-    // Start async scan
-    // Parameters: async=true, show_hidden=true, passive=false, max_ms_per_chan
-    // Increased to 500ms per channel for better results
-    WiFi.scanNetworks(true, true, false, 500);
-
-    if (m_onScanProgress) {
-        m_onScanProgress(m_scanState, m_scanProgress);
-    }
-}
-
-void AssessorEngine::beginWiFiScan() {
     // Always reinit to ensure clean state
     m_initialized = false;
     if (!init()) {
@@ -192,21 +150,83 @@ void AssessorEngine::beginWiFiScan() {
     WiFi.scanDelete();
     yield();
 
+    m_targetTable.clear();
+    m_scanProgress = 0;
+    m_scanStartMs = millis();
+    m_combinedScan = true;  // Will chain to BLE after WiFi
+
     if (Serial) {
-        Serial.println("[WiFi] Starting WiFi-only scan...");
+        Serial.println("[WiFi] Running SYNCHRONOUS scan...");
     }
 
+    // Use SYNCHRONOUS scan - blocks but more reliable
+    int count = WiFi.scanNetworks(false, true, false, 300);  // async=FALSE
+
+    if (Serial) {
+        Serial.printf("[WiFi] Sync scan returned: %d networks\n", count);
+    }
+
+    if (count > 0) {
+        // Process results - this will chain to BLE if m_combinedScan is true
+        processScanResults(count);
+    } else {
+        if (Serial) {
+            Serial.println("[WiFi] No networks, skipping to BLE...");
+        }
+        // Still try BLE even if WiFi found nothing
+        processScanResults(0);
+    }
+
+    if (m_onScanProgress) {
+        m_onScanProgress(m_scanState, m_scanProgress);
+    }
+}
+
+void AssessorEngine::beginWiFiScan() {
+    if (Serial) {
+        Serial.println("[WiFi] === BEGIN WIFI SCAN ===");
+    }
+
+    // Always reinit to ensure clean state
+    m_initialized = false;
+    if (!init()) {
+        if (Serial) {
+            Serial.println("[WiFi] Init failed, aborting scan");
+        }
+        m_scanState = ScanState::COMPLETE;
+        m_scanProgress = 100;
+        return;
+    }
+
+    // Clear old results
+    WiFi.scanDelete();
+    yield();
+
     m_targetTable.clear();
-    m_scanState = ScanState::WIFI_SCANNING;
     m_scanProgress = 0;
     m_scanStartMs = millis();
     m_combinedScan = false;  // WiFi only
 
-    // Start async scan with reasonable timeout per channel
-    int result = WiFi.scanNetworks(true, true, false, 300);
+    if (Serial) {
+        Serial.println("[WiFi] Running SYNCHRONOUS scan...");
+    }
+
+    // Use SYNCHRONOUS scan - blocks but more reliable
+    int count = WiFi.scanNetworks(false, true, false, 300);  // async=FALSE
 
     if (Serial) {
-        Serial.printf("[WiFi] Scan started (result=%d)\n", result);
+        Serial.printf("[WiFi] Sync scan returned: %d networks\n", count);
+    }
+
+    if (count > 0) {
+        // Process results immediately
+        processScanResults(count);
+    } else {
+        if (Serial) {
+            Serial.println("[WiFi] No networks found or scan failed");
+        }
+        m_scanState = ScanState::COMPLETE;
+        m_scanProgress = 100;
     }
 
     if (m_onScanProgress) {

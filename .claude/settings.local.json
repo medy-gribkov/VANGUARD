@@ -17,7 +17,12 @@
       "Bash(git add:*)",
       "Bash(/c/Users/User/.platformio/penv/Scripts/pio.exe run:*)",
       "Bash(git commit:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(cmd /c \"pio run\")",
+      "Bash(cmd /c \"cd /d c:\\\\Users\\\\User\\\\CardPuter\\\\Main\\\\Projects\\\\Task-Oriented-Assesor && pio run\")",
+      "Bash(cmd /c \"where pio\")",
+      "Bash(cmd /c \"C:\\\\Users\\\\User\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe run\")",
+      "Bash(powershell -Command:*)"
     ]
   }
 }

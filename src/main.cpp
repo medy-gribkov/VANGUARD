@@ -190,6 +190,11 @@ void loop() {
             if (g_engine->getScanState() == ScanState::COMPLETE) {
                 g_state = AppState::RADAR;
             }
+            // Allow cancel with Q or Backspace
+            if (M5Cardputer.Keyboard.isKeyPressed('q') || M5Cardputer.Keyboard.isKeyPressed(KEY_BACKSPACE)) {
+                g_engine->stopScan();
+                g_state = AppState::RADAR;
+            }
             break;
 
         case AppState::RADAR:

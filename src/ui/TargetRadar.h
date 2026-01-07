@@ -152,7 +152,7 @@ private:
     int                  m_highlightIndex;  // Currently highlighted
     int                  m_scrollOffset;    // For scrolling long lists
     bool                 m_hasSelection;    // User pressed select
-    const Target*        m_selectedTarget;
+    Target               m_selectedTarget;  // Copy of selected target (safe from vector changes)
 
     // Settings
     TargetFilter         m_filter;

@@ -112,36 +112,38 @@ void loop() {
     // Handle keyboard input globally
     handleKeyboardInput();
 
-    // If menu is visible, render it on top and handle its actions
+    // Check for pending menu action FIRST (even if menu closed)
+    if (g_menu && g_menu->hasAction()) {
+        MenuAction action = g_menu->getAction();
+        switch (action) {
+            case MenuAction::RESCAN:
+                g_engine->beginScan();
+                g_state = AppState::SCANNING;
+                break;
+            case MenuAction::RESCAN_BLE:
+                g_engine->beginBLEScan();
+                g_state = AppState::SCANNING;
+                break;
+            case MenuAction::SETTINGS:
+                if (g_settings) {
+                    g_settings->show();
+                    g_state = AppState::SETTINGS;
+                }
+                break;
+            case MenuAction::ABOUT:
+                // TODO: Show about
+                break;
+            case MenuAction::BACK:
+            case MenuAction::NONE:
+                // Just close menu
+                break;
+        }
+    }
+
+    // If menu is visible, render it on top
     if (g_menu && g_menu->isVisible()) {
         g_menu->tick();
         g_menu->render();
-
-        // Check for menu action
-        if (g_menu->hasAction()) {
-            MenuAction action = g_menu->getAction();
-            switch (action) {
-                case MenuAction::RESCAN:
-                    g_engine->beginScan();
-                    g_state = AppState::SCANNING;
-                    break;
-                case MenuAction::RESCAN_BLE:
-                    g_engine->beginBLEScan();
-                    g_state = AppState::SCANNING;
-                    break;
-                case MenuAction::SETTINGS:
-                    g_settings->show();
-                    g_state = AppState::SETTINGS;
-                    break;
-                case MenuAction::ABOUT:
-                    // TODO: Show about
-                    break;
-                case MenuAction::BACK:
-                case MenuAction::NONE:
-                    // Just close menu
-                    break;
-            }
-        }
         yield();
         return;  // Skip normal processing while menu is visible
     }

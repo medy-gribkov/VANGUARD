@@ -15,7 +15,7 @@ TargetRadar::TargetRadar(AssessorEngine& engine)
     , m_highlightIndex(0)
     , m_scrollOffset(0)
     , m_hasSelection(false)
-    , m_selectedTarget(nullptr)
+    , m_selectedTarget()
     , m_sortOrder(SortOrder::SIGNAL_STRENGTH)
     , m_autoRefresh(true)
     , m_lastRefreshMs(0)
@@ -356,12 +356,11 @@ bool TargetRadar::hasSelection() const {
 }
 
 const Target* TargetRadar::getSelectedTarget() const {
-    return m_selectedTarget;
+    return m_hasSelection ? &m_selectedTarget : nullptr;
 }
 
 void TargetRadar::clearSelection() {
     m_hasSelection = false;
-    m_selectedTarget = nullptr;
 }
 
 int TargetRadar::getHighlightedIndex() const {
@@ -390,7 +389,7 @@ void TargetRadar::navigateDown() {
 
 void TargetRadar::select() {
     if (m_highlightIndex >= 0 && m_highlightIndex < (int)m_targets.size()) {
-        m_selectedTarget = &m_targets[m_highlightIndex];
+        m_selectedTarget = m_targets[m_highlightIndex];  // Copy the target
         m_hasSelection = true;
     }
 }

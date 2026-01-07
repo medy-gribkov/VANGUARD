@@ -47,20 +47,26 @@ BruceBLE::~BruceBLE() {
 bool BruceBLE::init() {
     if (m_initialized) return true;
 
+    if (Serial) {
+        Serial.println("[BLE] Initializing...");
+    }
+
     yield();  // Feed watchdog
 
     // Check if NimBLE is already initialized
-    if (NimBLEDevice::getInitialized()) {
-        // Already initialized, just get the handles
+    bool wasInitialized = NimBLEDevice::getInitialized();
+    if (wasInitialized) {
         if (Serial) {
             Serial.println("[BLE] Already initialized, reusing");
         }
     } else {
-        // Initialize NimBLE fresh
+        // Initialize NimBLE fresh - this can take time
+        yield();
         NimBLEDevice::init("Velora");
+        yield();
+        delay(50);  // Small delay for BLE stack to settle
+        yield();
     }
-
-    yield();  // Feed watchdog
 
     // Get scanner
     m_scanner = NimBLEDevice::getScan();
@@ -70,6 +76,8 @@ bool BruceBLE::init() {
         }
         return false;
     }
+
+    yield();  // Feed watchdog
 
     // Create and set scan callbacks (only if not already set)
     if (!m_scanCallbacks) {
@@ -82,6 +90,8 @@ bool BruceBLE::init() {
     m_scanner->setInterval(100);
     m_scanner->setWindow(99);         // Nearly continuous scanning
 
+    yield();  // Feed watchdog
+
     // Get advertising handle
     m_advertising = NimBLEDevice::getAdvertising();
 
@@ -89,7 +99,7 @@ bool BruceBLE::init() {
     m_state = BLEAdapterState::IDLE;
 
     if (Serial) {
-        Serial.println("[BLE] Initialized");
+        Serial.println("[BLE] Initialized OK");
     }
 
     return true;

@@ -26,7 +26,7 @@
  * }
  */
 
-#include <M5Unified.h>
+#include <M5Cardputer.h>
 #include "../core/Types.h"
 #include "../core/AssessorEngine.h"
 #include "Theme.h"
@@ -41,7 +41,7 @@ public:
      * @param engine Reference to the assessor engine for data
      */
     explicit TargetRadar(AssessorEngine& engine);
-    ~TargetRadar() = default;
+    ~TargetRadar();
 
     // -------------------------------------------------------------------------
     // Lifecycle
@@ -159,17 +159,24 @@ private:
     SortOrder            m_sortOrder;
     bool                 m_autoRefresh;
     uint32_t             m_lastRefreshMs;
+    uint32_t             m_lastRenderMs;    // For frame limiting
+    bool                 m_needsRedraw;     // Dirty flag
+
+    // Double buffer sprite
+    M5Canvas*            m_canvas;
 
     // Rendering constants
     static constexpr int HEADER_HEIGHT      = Theme::HEADER_HEIGHT;
     static constexpr int ITEM_HEIGHT        = Theme::LIST_ITEM_HEIGHT;
     static constexpr int VISIBLE_ITEMS      = Theme::LIST_VISIBLE_ITEMS;
     static constexpr uint32_t REFRESH_INTERVAL_MS = 1000;
+    static constexpr uint32_t RENDER_INTERVAL_MS = 50;  // 20 FPS max
 
     // Rendering helpers
     void renderHeader();
     void renderTargetList();
     void renderTargetItem(const Target& target, int y, bool highlighted);
+    void renderTargetItemToCanvas(const Target& target, int y, bool highlighted);
     void renderEmptyState();
     void renderScrollIndicator();
 

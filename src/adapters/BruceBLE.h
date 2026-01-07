@@ -300,11 +300,10 @@ private:
     void generateSourAppleData(uint8_t* data, size_t* len);
 
     // NimBLE scan callback
-    class ScanCallbacks : public NimBLEScanCallbacks {
+    class ScanCallbacks : public NimBLEAdvertisedDeviceCallbacks {
     public:
         ScanCallbacks(BruceBLE* parent) : m_parent(parent) {}
         void onResult(NimBLEAdvertisedDevice* device) override;
-        void onScanEnd(NimBLEScanResults results) override;
     private:
         BruceBLE* m_parent;
     };

@@ -125,8 +125,18 @@ std::vector<AvailableAction> ActionResolver::getActionsFor(const Target& target)
     for (size_t i = 0; i < s_actionDefCount; i++) {
         const ActionDefinition& def = s_actionDefs[i];
 
+        // CRITICAL: Only show actions that are actually implemented
+        if (!isImplemented(def.type)) {
+            continue;
+        }
+
         // Check target type
         if (!checkTargetType(target, def.requiredTargetType)) {
+            continue;
+        }
+
+        // Check 5GHz - can't do WiFi attacks on 5GHz networks
+        if (!check5GHzCompatibility(target, def.type)) {
             continue;
         }
 
@@ -215,6 +225,47 @@ bool ActionResolver::checkSecurityCompatibility(const Target& target, SecurityTy
         return true;  // Compatible with all
     }
     return target.security != incompatible;
+}
+
+bool ActionResolver::check5GHzCompatibility(const Target& target, ActionType action) const {
+    // BLE actions don't care about WiFi channel
+    if (action == ActionType::BLE_SPAM ||
+        action == ActionType::BLE_SOUR_APPLE ||
+        action == ActionType::BLE_SKIMMER_DETECT) {
+        return true;
+    }
+
+    // WiFi attacks can only work on 2.4GHz (channels 1-14)
+    // ESP32 cannot transmit on 5GHz bands
+    if (target.channel > 14) {
+        return false;  // 5GHz target, can't attack
+    }
+
+    return true;
+}
+
+bool ActionResolver::isImplemented(ActionType action) const {
+    // Only return true for actions that are FULLY implemented
+    // and wired up in AssessorEngine::executeAction()
+    switch (action) {
+        // WORKING - fully implemented
+        case ActionType::DEAUTH_ALL:
+        case ActionType::DEAUTH_SINGLE:
+        case ActionType::BEACON_FLOOD:
+        case ActionType::BLE_SPAM:
+        case ActionType::BLE_SOUR_APPLE:
+            return true;
+
+        // NOT IMPLEMENTED - don't show to user
+        case ActionType::MONITOR:           // Not routed
+        case ActionType::EVIL_TWIN:         // Stub returns false
+        case ActionType::CAPTURE_PMKID:     // Not routed
+        case ActionType::CAPTURE_HANDSHAKE: // Partial, detection missing
+        case ActionType::PROBE_FLOOD:       // Not implemented
+        case ActionType::BLE_SKIMMER_DETECT:// Not implemented
+        default:
+            return false;
+    }
 }
 
 } // namespace Assessor

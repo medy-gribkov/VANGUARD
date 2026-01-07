@@ -80,6 +80,8 @@ private:
     bool checkTargetType(const Target& target, TargetType required) const;
     bool checkClientRequirement(const Target& target, bool requiresClients) const;
     bool checkSecurityCompatibility(const Target& target, SecurityType incompatible) const;
+    bool check5GHzCompatibility(const Target& target, ActionType action) const;
+    bool isImplemented(ActionType action) const;
 };
 
 } // namespace Assessor

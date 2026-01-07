@@ -39,11 +39,11 @@ constexpr uint16_t COLOR_TEXT_SECONDARY  = 0xB5B6;  // Light gray
 constexpr uint16_t COLOR_TEXT_MUTED      = 0x7BEF;  // Mid gray
 constexpr uint16_t COLOR_TEXT_DISABLED   = 0x4208;  // Dark gray
 
-// Accent colors
-constexpr uint16_t COLOR_ACCENT          = 0x07FF;  // Cyan (primary action)
-constexpr uint16_t COLOR_ACCENT_DIM      = 0x0410;  // Dark cyan
+// Accent colors - ORANGE THEME
+constexpr uint16_t COLOR_ACCENT          = 0xFD20;  // Orange (primary action)
+constexpr uint16_t COLOR_ACCENT_DIM      = 0x8200;  // Dark orange
 constexpr uint16_t COLOR_SUCCESS         = 0x07E0;  // Green
-constexpr uint16_t COLOR_WARNING         = 0xFD20;  // Orange
+constexpr uint16_t COLOR_WARNING         = 0xFFE0;  // Yellow
 constexpr uint16_t COLOR_DANGER          = 0xF800;  // Red
 
 // Signal strength colors

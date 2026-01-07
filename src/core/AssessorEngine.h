@@ -89,7 +89,8 @@ public:
 
     /**
      * @brief Start a full scan (WiFi + BLE)
-     * Non-blocking. Check getScanState() for progress.
+     * Non-blocking. WiFi scans first, then BLE automatically chains.
+     * Check getScanState() for progress.
      */
     void beginScan();
 
@@ -102,6 +103,11 @@ public:
      * @brief Start BLE-only scan
      */
     void beginBLEScan();
+
+    /**
+     * @brief Check if this is a combined scan that will include BLE
+     */
+    bool isCombinedScan() const;
 
     /**
      * @brief Stop any active scan
@@ -227,6 +233,7 @@ private:
     uint8_t        m_scanProgress;
     bool           m_actionActive;
     ActionProgress m_actionProgress;
+    bool           m_combinedScan;  // true if BLE should chain after WiFi
 
     // Components
     TargetTable    m_targetTable;
@@ -240,13 +247,15 @@ private:
     ScanProgressCallback   m_onScanProgress;
     ActionProgressCallback m_onActionProgress;
 
-    // Scan timing
+    // Timing
     uint32_t m_scanStartMs;
+    uint32_t m_actionStartMs;
 
     // Internal tick handlers
     void tickScan();
     void tickAction();
     void processScanResults(int count);
+    void processBLEScanResults();
 };
 
 } // namespace Assessor

@@ -5,6 +5,7 @@
 
 #include "BootSequence.h"
 #include "Theme.h"
+#include <M5Cardputer.h>
 
 namespace Assessor {
 
@@ -23,7 +24,7 @@ void BootSequence::begin() {
     m_fadeLevel = 0;
     
     // Clear screen once at start
-    M5.Display.fillScreen(Theme::COLOR_BACKGROUND);
+    M5Cardputer.Display.fillScreen(Theme::COLOR_BACKGROUND);
 }
 
 void BootSequence::tick() {
@@ -70,7 +71,7 @@ void BootSequence::tick() {
 
         case BootPhase::FADE_OUT:
             m_fadeLevel = max(0, 255 - (int)(elapsed * 255 / FADE_OUT_DURATION));
-            M5.Display.fillScreen(Theme::COLOR_BACKGROUND);
+            M5Cardputer.Display.fillScreen(Theme::COLOR_BACKGROUND);
             drawLogo(m_fadeLevel);
             drawTagline(m_fadeLevel);
             if (elapsed >= FADE_OUT_DURATION) {
@@ -89,7 +90,7 @@ bool BootSequence::isComplete() const {
 
 void BootSequence::skip() {
     m_phase = BootPhase::COMPLETE;
-    M5.Display.fillScreen(Theme::COLOR_BACKGROUND);
+    M5Cardputer.Display.fillScreen(Theme::COLOR_BACKGROUND);
 }
 
 BootPhase BootSequence::getPhase() const {
@@ -138,10 +139,10 @@ void BootSequence::drawLogo(uint8_t alpha) {
 
     uint16_t color = Theme::rgb(alpha, alpha, alpha);
 
-    M5.Display.setTextSize(2);
-    M5.Display.setTextColor(color, Theme::COLOR_BACKGROUND);
-    M5.Display.setTextDatum(MC_DATUM);
-    M5.Display.drawString("THE ASSESSOR", centerX, y);
+    M5Cardputer.Display.setTextSize(2);
+    M5Cardputer.Display.setTextColor(color, Theme::COLOR_BACKGROUND);
+    M5Cardputer.Display.setTextDatum(MC_DATUM);
+    M5Cardputer.Display.drawString("THE ASSESSOR", centerX, y);
 }
 
 void BootSequence::drawTagline(uint8_t alpha) {
@@ -153,10 +154,10 @@ void BootSequence::drawTagline(uint8_t alpha) {
     uint8_t b = (alpha * 200) / 255;
     uint16_t color = Theme::rgb(r, g, b);
 
-    M5.Display.setTextSize(1);
-    M5.Display.setTextColor(color, Theme::COLOR_BACKGROUND);
-    M5.Display.setTextDatum(MC_DATUM);
-    M5.Display.drawString("Target First. Always.", centerX, y);
+    M5Cardputer.Display.setTextSize(1);
+    M5Cardputer.Display.setTextColor(color, Theme::COLOR_BACKGROUND);
+    M5Cardputer.Display.setTextDatum(MC_DATUM);
+    M5Cardputer.Display.drawString("Target First. Always.", centerX, y);
 }
 
 void BootSequence::drawOnboardingCard() {
@@ -183,7 +184,7 @@ void BootSequence::advancePhase() {
             break;
         case BootPhase::FADE_OUT:
             m_phase = BootPhase::COMPLETE;
-            M5.Display.fillScreen(Theme::COLOR_BACKGROUND);
+            M5Cardputer.Display.fillScreen(Theme::COLOR_BACKGROUND);
             break;
         default:
             break;
@@ -194,12 +195,8 @@ void BootSequence::advancePhase() {
 }
 
 bool BootSequence::checkSkipInput() {
-    if (M5.BtnA.wasPressed() || M5.BtnB.wasPressed() || M5.BtnC.wasPressed()) {
-        return true;
-    }
-    if (M5.BtnPWR.wasPressed()) {
-        return true;
-    }
+    // Keyboard skip is now handled in main.cpp handleKeyboardInput()
+    // This function returns false - skip is done via main.cpp calling skip()
     return false;
 }
 

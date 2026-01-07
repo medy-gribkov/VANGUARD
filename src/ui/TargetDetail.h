@@ -22,7 +22,7 @@
  * }
  */
 
-#include <M5Unified.h>
+#include <M5Cardputer.h>
 #include "../core/Types.h"
 #include "../core/AssessorEngine.h"
 #include "Theme.h"
@@ -49,7 +49,7 @@ public:
      * @param target The target to display
      */
     TargetDetail(AssessorEngine& engine, const Target& target);
-    ~TargetDetail() = default;
+    ~TargetDetail();
 
     // -------------------------------------------------------------------------
     // Lifecycle
@@ -156,6 +156,11 @@ private:
     ActionProgress              m_progress;
     ActionResult                m_result;
     const char*                 m_resultMessage;
+
+    // Double buffer sprite
+    M5Canvas*                   m_canvas;
+    uint32_t                    m_lastRenderMs;
+    static constexpr uint32_t   RENDER_INTERVAL_MS = 50;
 
     // Rendering helpers
     void renderInfo();

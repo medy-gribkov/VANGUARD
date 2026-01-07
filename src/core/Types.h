@@ -19,7 +19,7 @@ namespace Assessor {
 // =============================================================================
 
 constexpr size_t   MAX_TARGETS          = 64;
-constexpr size_t   MAX_SSID_LEN         = 32;
+constexpr size_t   SSID_MAX_LEN         = 32;  // Renamed to avoid ESP-IDF conflict
 constexpr size_t   MAX_CLIENTS_PER_AP   = 16;
 constexpr uint8_t  WIFI_CHANNEL_MIN     = 1;
 constexpr uint8_t  WIFI_CHANNEL_MAX     = 14;
@@ -41,8 +41,8 @@ constexpr int8_t   RSSI_WEAK            = -80;
  */
 enum class TargetType : uint8_t {
     UNKNOWN,
-    WIFI_AP,          // Access Point
-    WIFI_STATION,     // Client device
+    ACCESS_POINT,     // WiFi Access Point (renamed to avoid ESP-IDF conflict)
+    STATION,          // WiFi Client device
     BLE_DEVICE,       // Bluetooth LE device
     BLE_BEACON,       // iBeacon/Eddystone
     RF_DEVICE         // Sub-GHz device (if supported)
@@ -143,7 +143,7 @@ enum class SignalStrength : uint8_t {
 struct Target {
     // Identity
     uint8_t      bssid[6];                   // MAC address
-    char         ssid[MAX_SSID_LEN + 1];     // Network name (null-terminated)
+    char         ssid[SSID_MAX_LEN + 1];     // Network name (null-terminated)
     TargetType   type;
 
     // RF characteristics

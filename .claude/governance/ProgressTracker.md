@@ -32,33 +32,31 @@
 
 ---
 
-## 3. Phase 1: Bruce Integration (IN PROGRESS)
+## 3. Phase 1: Bruce Integration (COMPLETE)
 
 - [x] Analyze Bruce repository structure
 - [x] Map Bruce's attack function signatures
 - [x] Document findings in BruceAnalysis.md
 - [x] Create BruceWiFi.h adapter interface
 - [x] Create BruceBLE.h adapter interface
-- [ ] **Clone Bruce repo locally**
-- [ ] **Copy raw frame sending logic**
-- [ ] **Implement BruceWiFi.cpp**
-- [ ] **Implement BruceBLE.cpp**
-- [ ] **Test: trigger one attack from our code**
+- [x] Extract raw frame sending logic (minimal, no bloat)
+- [x] Implement BruceWiFi.cpp (deauth, beacon, handshake)
+- [x] Implement TargetTable.cpp
+- [x] Implement ActionResolver.cpp
+- [x] Implement AssessorEngine.cpp
+- [x] Implement BootSequence.cpp
+- [x] Implement TargetRadar.cpp
+- [x] Implement TargetDetail.cpp
+- [ ] **Test on hardware**
 
-### Phase 2: Core Engine
-- [ ] Implement TargetTable
-- [ ] Implement ActionResolver
-- [ ] Implement AssessorEngine
-
-### Phase 3: UI Shell
-- [ ] BootSequence with animation
-- [ ] TargetRadar list view
-- [ ] TargetDetail context menu
-
-### Phase 4: Polish
-- [ ] README with GIFs
+### Phase 2: Polish & Testing
+- [ ] Flash to Cardputer and test
+- [ ] Fix any compilation errors
+- [ ] Test WiFi scanning
+- [ ] Test deauth attack
+- [ ] Add BLE implementation
+- [ ] README with GIFs/screenshots
 - [ ] GitHub Actions CI
-- [ ] Community launch
 
 ---
 

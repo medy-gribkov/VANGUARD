@@ -243,6 +243,7 @@ private:
     // Internal tick handlers
     void tickScan();
     void tickAction();
+    void processScanResults(int count);
 };
 
 } // namespace Assessor

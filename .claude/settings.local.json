@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pio run:*)",
+      "Bash(python -m platformio run:*)",
+      "Bash(where:*)",
+      "Bash(where pio:*)",
+      "Bash(dir \"%USERPROFILE%\\\\.platformio\\\\penv\\\\Scripts\\\\pio*\")",
+      "Bash(\"C:/Users/User/.platformio/penv/Scripts/pio.exe\" run)"
+    ]
+  }
+}

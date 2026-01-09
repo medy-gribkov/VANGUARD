@@ -18,7 +18,7 @@
 
 ## Overview
 
-**The Assessor** is a target-first wireless auditing tool for the M5Stack Cardputer (ESP32-S3). Instead of navigating endless attack menus, you see what's around you first, tap a target, and instantly know what actions are available.
+**VANGUARD** is a target-first wireless auditing tool for the M5Stack Cardputer (ESP32-S3). Instead of navigating endless attack menus, you see what's around you first, tap a target, and instantly know what actions are available.
 
 ```
 Traditional Approach:

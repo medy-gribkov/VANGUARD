@@ -84,29 +84,65 @@ void SystemTask::run() {
         
         // 3. Monitor Status changes and emit events
         if (m_actionActive) {
-            uint32_t now = millis();
-            if (now - m_lastProgressTime > 500) {
-                 // Send progress update
-                 // Can't send full struct easily unless we allocate it
-                 // Let's send a notification code for now, or use a static/shared buffer approach?
-                 // Safer: Allocate ActionProgress
-                 ActionProgress* prog = new ActionProgress();
-                 prog->type = m_currentAction;
-                 prog->elapsedMs = now - m_actionStartTime;
-                 prog->result = ActionResult::IN_PROGRESS;
-                 
-                 // Get stats
-                 uint32_t wifiPackets = BruceWiFi::getInstance().getPacketsSent();
-                 uint32_t blePackets = BruceBLE::getInstance().getAdvertisementsSent();
-                 prog->packetsSent = wifiPackets + blePackets;
-                 
-                 // Text status (optional, maybe simplify)
-                 // Keeping it null for now to save bandwidth/logic
-                 prog->statusText = nullptr; 
-                 
-                 sendEvent(SysEventType::ACTION_PROGRESS, prog, sizeof(ActionProgress), true);
-                 m_lastProgressTime = now;
-            }
+             uint32_t now = millis();
+             
+             // Check for Action Completion logic
+             bool completed = false;
+             ActionResult result = ActionResult::SUCCESS;
+             const char* statusText = nullptr;
+
+             if (m_currentAction == ActionType::CAPTURE_HANDSHAKE) {
+                 if (BruceWiFi::getInstance().hasHandshake()) {
+                     completed = true;
+                     result = ActionResult::SUCCESS;
+                     statusText = "Handshake Captured!";
+                 } else if (now - m_actionStartTime > 60000) { // 60s timeout
+                     completed = true;
+                     result = ActionResult::FAILED_TIMEOUT;
+                     statusText = "Capture timed out";
+                 }
+             }
+
+             if (completed) {
+                 m_actionActive = false;
+                 sendEvent(SysEventType::ACTION_COMPLETE, (void*)(intptr_t)result, 0, false);
+                 // Optional: Send one last progress event with the final statusText
+                 ActionProgress* finalProg = new ActionProgress();
+                 finalProg->type = m_currentAction;
+                 finalProg->startTimeMs = m_actionStartTime;
+                 finalProg->elapsedMs = now - m_actionStartTime;
+                 finalProg->result = result;
+                 finalProg->packetsSent = BruceWiFi::getInstance().getPacketsSent();
+                 finalProg->statusText = statusText;
+                 sendEvent(SysEventType::ACTION_PROGRESS, finalProg, sizeof(ActionProgress), true);
+             } else if (now - m_lastProgressTime > 500) {
+                  // Send progress update
+                  ActionProgress* prog = new ActionProgress();
+                  prog->type = m_currentAction;
+                  prog->elapsedMs = now - m_actionStartTime;
+                  prog->result = ActionResult::IN_PROGRESS;
+                  
+                  // Get stats
+                  uint32_t wifiPackets = BruceWiFi::getInstance().getPacketsSent();
+                  uint32_t blePackets = BruceBLE::getInstance().getAdvertisementsSent();
+                  prog->packetsSent = wifiPackets + blePackets;
+                  
+                  // Contextual status text
+                  if (m_currentAction == ActionType::CAPTURE_HANDSHAKE) {
+                      prog->statusText = "Sniffing EAPOL...";
+                  } else if (m_currentAction == ActionType::EVIL_TWIN) {
+                      static char portalStatus[32];
+                      snprintf(portalStatus, sizeof(portalStatus), "Portal: %d clients", 
+                               EvilPortal::getInstance().getClientCount());
+                      prog->statusText = portalStatus;
+                  } else {
+                      prog->statusText = "Attacking...";
+                  }
+                  
+                  prog->startTimeMs = m_actionStartTime;
+                  sendEvent(SysEventType::ACTION_PROGRESS, prog, sizeof(ActionProgress), true);
+                  m_lastProgressTime = now;
+             }
         }
         
         // Feed Watchdog for Core 0 (if enabled)
@@ -252,17 +288,14 @@ void SystemTask::handleActionStart(ActionRequest* req) {
 
         case ActionType::CAPTURE_HANDSHAKE:
              if (wifi.init()) {
-                 // 1. Start Sniffer/PCAP
+                 // 1. Start Capture (BruceWiFi handles PCAP internally if captureHandshake is called)
+                 // But we want to ensure it's logged to our specific filename
                  char filename[64];
                  snprintf(filename, sizeof(filename), "/captures/hs_%02X%02X%02X.pcap", 
                           t.bssid[3], t.bssid[4], t.bssid[5]);
                  wifi.setPcapLogging(true, filename);
                  
-                 // 2. Start Deauth to force handshake
-                 wifi.deauthAll(t.bssid, t.channel); 
-                 
-                 // 3. Mark success (monitoring will happen in tick)
-                 success = true;
+                 success = wifi.captureHandshake(t.bssid, t.channel, true);
              }
              break;
 

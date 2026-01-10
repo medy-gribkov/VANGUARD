@@ -227,6 +227,7 @@ void VanguardEngine::handleSystemEvent(const SystemEvent& evt) {
             target.lastSeenMs = dev->lastSeenMs;
             
             m_targetTable.addOrUpdate(target);
+            if (evt.isPointer) delete dev;
             break;
         }
         
@@ -265,6 +266,17 @@ void VanguardEngine::handleSystemEvent(const SystemEvent& evt) {
             break;
         }
         
+        case SysEventType::ERROR_OCCURRED:
+        {
+            const char* msg = (const char*)evt.data;
+            if (Serial) Serial.printf("[Engine] ERROR: %s\n", msg);
+            m_actionActive = false;
+            m_actionProgress.result = ActionResult::FAILED_HARDWARE;
+            m_actionProgress.statusText = msg;
+            if (m_onActionProgress) m_onActionProgress(m_actionProgress);
+            break;
+        }
+
         default:
             break;
     }

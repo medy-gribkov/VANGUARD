@@ -43,6 +43,11 @@ jobs:
       - name: Run Unit Tests
         run: pio test -e native
 
+      - name: Check Memory Usage
+        run: |
+          echo "### Memory Usage Report" >> $GITHUB_STEP_SUMMARY
+          pio run --target size | grep -E "Data|BSS|RAM" >> $GITHUB_STEP_SUMMARY
+
       - name: Upload Artifact
         uses: actions/upload-artifact@v3
         with:

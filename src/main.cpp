@@ -10,6 +10,7 @@
  */
 
 #include <M5Cardputer.h>
+#include <esp_task_wdt.h>
 #include "core/VanguardEngine.h"
 #include "ui/BootSequence.h"
 #include "ui/ScanSelector.h"
@@ -120,6 +121,11 @@ void setup() {
 
     // DIAGNOSTIC:: Check I2C for Keyboard (0x5F)
     Wire.begin(2, 1); // Ensure Wire is started on correct pins (SDA=G2, SCL=G1)
+
+    // [FOUNDATION] I2C STABILITY FIXES (Pillar 1.1) - Apply ALWAYS
+    Wire.setTimeOut(10);      // Prevent infinite blocking (Item 1)
+    Wire.setClock(100000);    // Lower speed for noise immunity (Item 2)
+
     Wire.beginTransmission(0x5F);
     bool kbFound = (Wire.endTransmission() == 0);
     
@@ -127,10 +133,8 @@ void setup() {
         Serial.printf("[SETUP] Keyboard (0x5F): %s\n", kbFound ? "FOUND" : "MISSING");
         if (!kbFound) {
             Serial.println("[SETUP] FORCE RESTARTING WIRE...");
-            Wire.end();
-            delay(100);
-            Wire.begin(2, 1);
-            delay(100);
+            Wire.begin();
+            // Settings already applied above
         }
     }
 
@@ -176,6 +180,9 @@ void setup() {
 // =============================================================================
 
 void loop() {
+    // [FOUNDATION] Feed Watchdog (Item 11)
+    esp_task_wdt_reset();
+
     M5Cardputer.update();  // Read keyboard and buttons
     
     // Handle keyboard input globally
@@ -303,8 +310,10 @@ void loop() {
                 const Target* selected = g_radar->getSelectedTarget();
                 if (selected) {
                     // Clean up any previous detail view
+                    // [MEMORY] Fix Leak: Delete previous instance (Item 34/56)
                     if (g_detail) {
                         delete g_detail;
+                        g_detail = nullptr;
                     }
                     g_detail = new TargetDetail(*g_engine, *selected);
                     g_radar->clearSelection();

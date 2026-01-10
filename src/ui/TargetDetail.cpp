@@ -331,7 +331,7 @@ void TargetDetail::renderInfo() {
             
             // Show up to 3 client MACs
             for (int i = 0; i < m_target.clientCount && i < 3; i++) {
-                char macStr[18];
+                char macStr[20];
                 snprintf(macStr, sizeof(macStr), " %02X:%02X:%02X:%02X:%02X:%02X",
                          m_target.clientMacs[i][0], m_target.clientMacs[i][1], m_target.clientMacs[i][2],
                          m_target.clientMacs[i][3], m_target.clientMacs[i][4], m_target.clientMacs[i][5]);

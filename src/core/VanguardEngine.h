@@ -28,7 +28,9 @@
 
 #include "VanguardTypes.h"
 #include "TargetTable.h"
+#include "TargetTable.h"
 #include "ActionResolver.h"
+#include "IPC.h"
 #include <functional>
 
 namespace Vanguard {
@@ -261,8 +263,16 @@ private:
     void tickScan();
     void tickAction();
     void tickTransition();  // Handle WiFi→BLE transition steps
+    void setActionProgressCallback(ActionProgressCallback cb);
+
+    /**
+     * @brief Handle events from the System Task (Core 0)
+     */
+    void handleSystemEvent(const struct SystemEvent& evt);
+
+    // Internal helpers
     void processScanResults(int count);
-    void processBLEScanResults();
+    void processBLEScanResults(); // Replaced by event handling? No, may still use for batching if needed
 };
 
 } // namespace Vanguard

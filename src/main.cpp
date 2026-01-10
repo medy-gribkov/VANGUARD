@@ -12,6 +12,7 @@
 #include <M5Cardputer.h>
 #include <esp_task_wdt.h>
 #include "core/VanguardEngine.h"
+#include "core/SystemTask.h"
 #include "ui/BootSequence.h"
 #include "ui/ScanSelector.h"
 #include "ui/TargetRadar.h"
@@ -144,9 +145,13 @@ void setup() {
     M5Cardputer.Display.setTextColor(Theme::COLOR_TEXT_PRIMARY);
     M5Cardputer.Display.setFont(&fonts::Font0);
 
-    // Initialize components (heavy operations)
+    // Start Background System Task (Core 0)
+    // This handles all WiFi/BLE operations to prevent UI freezing
+    Vanguard::SystemTask::getInstance().start();
+
+    // Application State Machine (Core 1)
     g_engine = &VanguardEngine::getInstance();
-    
+    g_engine->init();
     // NOTE: We do NOT call g_engine->init() here anymore. 
     // It is called in the INITIALIZING state loop.
     

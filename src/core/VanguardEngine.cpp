@@ -4,6 +4,7 @@
  */
 
 #include "VanguardEngine.h"
+#include "SystemTask.h"
 #include "../adapters/BruceWiFi.h"
 #include "../adapters/BruceBLE.h"
 #include "../adapters/EvilPortal.h"
@@ -98,202 +99,176 @@ void VanguardEngine::shutdown() {
     m_initialized = false;
 }
 
+// =============================================================================
+// LIFECYCLE
+// =============================================================================
+
 void VanguardEngine::tick() {
-    // Handle ASYNC WiFi scanning
-    if (m_scanState == ScanState::WIFI_SCANNING) {
-        // Check if async scan is complete
-        int16_t scanResult = WiFi.scanComplete();
-
-        if (scanResult == WIFI_SCAN_RUNNING) {
-            // Still scanning - update progress based on elapsed time
-            uint32_t elapsed = millis() - m_scanStartMs;
-            // Assume ~5 seconds for full scan, cap at 45% for WiFi portion
-            m_scanProgress = min(45, (int)(elapsed / 110));
+    // Poll for events from System Task (Core 0)
+    SystemEvent evt;
+    while (SystemTask::getInstance().receiveEvent(evt)) {
+        handleSystemEvent(evt);
+        
+        // Free pointer data if owned
+        if (evt.isPointer && evt.data) {
+            if (evt.type == SysEventType::BLE_DEVICE_FOUND) {
+                delete (BLEDeviceInfo*)evt.data;
+            }
+            // Add other types as needed
         }
-        else if (scanResult == WIFI_SCAN_FAILED) {
-            if (Serial) {
-                Serial.println("[WiFi] Scan failed!");
-            }
-            // Try to continue to BLE if combined scan
-            if (m_combinedScan) {
-                processScanResults(0);  // Will start transition
-            } else {
-                m_scanState = ScanState::COMPLETE;
-                m_scanProgress = 100;
-            }
-        }
-        else if (scanResult >= 0) {
-            // Scan complete with results
-            if (Serial) {
-                Serial.printf("[WiFi] Async scan complete: %d networks\n", scanResult);
-            }
-            processScanResults(scanResult);
-        }
-
-        // Safety timeout - 10 seconds max for WiFi scan
-        uint32_t elapsed = millis() - m_scanStartMs;
-        if (elapsed > 10000 && m_scanState == ScanState::WIFI_SCANNING) {
-            if (Serial) {
-                Serial.println("[WiFi] Scan timeout, forcing complete");
-            }
-            int16_t partialResult = WiFi.scanComplete();
-            if (partialResult > 0) {
-                processScanResults(partialResult);
-            } else if (m_combinedScan) {
-                processScanResults(0);
-            } else {
-                m_scanState = ScanState::COMPLETE;
-                m_scanProgress = 100;
-            }
-        }
-    }
-
-    // Handle NON-BLOCKING WiFi→BLE transition
-    if (m_scanState == ScanState::TRANSITIONING_TO_BLE) {
-        tickTransition();
-    }
-
-    // Handle BLE scanning (async via NimBLE)
-    if (m_scanState == ScanState::BLE_SCANNING) {
-        BruceBLE& ble = BruceBLE::getInstance();
-        ble.tick();
-
-        // Safety timeout - if BLE scan takes too long, force complete
-        uint32_t elapsed = millis() - m_scanStartMs;
-        bool timedOut = elapsed > 6000;  // 6 second max
-
-        if (ble.isScanComplete() || timedOut) {
-            if (timedOut && Serial) {
-                Serial.println("[BLE] Scan timed out, forcing complete");
-            }
-            ble.stopScan();
-            processBLEScanResults();
-        }
-        else {
-            // Update progress - BLE is 50-100% if combined, 0-100% if standalone
-            int bleProgress = min(95, (int)(elapsed / 50));
-            if (m_combinedScan) {
-                m_scanProgress = 50 + (bleProgress / 2);  // 50-97%
-            } else {
-                m_scanProgress = bleProgress;
-            }
-        }
-    }
-
-    // Handle active attacks
-    if (m_actionActive) {
-        tickAction();
     }
 }
 
 // =============================================================================
-// SCANNING
+// SCANNING (IPC to Core 0)
 // =============================================================================
 
 void VanguardEngine::beginScan() {
-    if (Serial) {
-        Serial.println("[Scan] === BEGIN COMBINED SCAN ===");
-    }
-
-    // Always reinit to ensure clean state
-    m_initialized = false;
-    if (!init()) {
-        if (Serial) {
-            Serial.println("[WiFi] Init failed, aborting scan");
-        }
-        m_scanState = ScanState::COMPLETE;
-        m_scanProgress = 100;
-        return;
-    }
-
-    // Clear old results
-    WiFi.scanDelete();
-    yield();
+    if (Serial) Serial.println("[Scan] === BEGIN COMBINED SCAN ===");
 
     m_targetTable.clear();
     m_scanProgress = 0;
     m_scanStartMs = millis();
-    m_combinedScan = true;  // Will chain to BLE after WiFi
-
-    if (Serial) {
-        Serial.println("[WiFi] Starting PASSIVE scan...");
-    }
-
-    // Delegates to RadioWarden via BruceWiFi::onEnable
-    BruceWiFi::getInstance().beginScan();
-
-
+    m_combinedScan = true;
     m_scanState = ScanState::WIFI_SCANNING;
 
-    if (m_onScanProgress) {
-        m_onScanProgress(m_scanState, m_scanProgress);
-    }
+    // Send Request: Start WiFi Scan
+    SystemRequest req;
+    req.cmd = SysCommand::WIFI_SCAN_START;
+    req.payload = nullptr;
+    SystemTask::getInstance().sendRequest(req);
+    
+    if (m_onScanProgress) m_onScanProgress(m_scanState, m_scanProgress);
 }
 
 void VanguardEngine::beginWiFiScan() {
-    if (Serial) {
-        Serial.println("[WiFi] === BEGIN WIFI SCAN ===");
-    }
-
-    // Always reinit to ensure clean state
-    m_initialized = false;
-    if (!init()) {
-        if (Serial) {
-            Serial.println("[WiFi] Init failed, aborting scan");
-        }
-        m_scanState = ScanState::COMPLETE;
-        m_scanProgress = 100;
-        return;
-    }
-
-    // Clear old results
-    WiFi.scanDelete();
-    yield();
-
-    m_targetTable.clear();
-    m_scanProgress = 0;
-    m_scanStartMs = millis();
-    m_combinedScan = false;  // WiFi only
-
-    if (Serial) {
-        Serial.println("[WiFi] Starting ASYNC scan...");
-    }
-
-    // Use ASYNC scan - non-blocking, check in tick()
-    WiFi.scanNetworks(true, true, false, 300);
-
-    m_scanState = ScanState::WIFI_SCANNING;
-
-    if (m_onScanProgress) {
-        m_onScanProgress(m_scanState, m_scanProgress);
-    }
-}
-void VanguardEngine::beginBLEScan() {
-    if (Serial) {
-        Serial.println("[BLE] Starting non-blocking BLE-only scan...");
-    }
-
     m_targetTable.clear();
     m_scanProgress = 0;
     m_scanStartMs = millis();
     m_combinedScan = false;
+    m_scanState = ScanState::WIFI_SCANNING;
 
-    // Start non-blocking initiation of BLE
-    m_scanState = ScanState::TRANSITIONING_TO_BLE;
-    m_transitionStep = 2; // Jump to step 2 (BLE shutdown/init)
-    m_transitionStartMs = millis();
-    m_bleInitAttempts = 0;
+    SystemRequest req;
+    req.cmd = SysCommand::WIFI_SCAN_START;
+    SystemTask::getInstance().sendRequest(req);
+    
+    if (m_onScanProgress) m_onScanProgress(m_scanState, m_scanProgress);
+}
 
-    if (m_onScanProgress) {
-        m_onScanProgress(m_scanState, m_scanProgress);
-    }
+void VanguardEngine::beginBLEScan() {
+    m_targetTable.clear();
+    m_scanProgress = 0;
+    m_scanStartMs = millis();
+    m_combinedScan = false;
+    m_scanState = ScanState::BLE_SCANNING;
+
+    SystemRequest req;
+    req.cmd = SysCommand::BLE_SCAN_START;
+    req.payload = (void*)(uintptr_t)10000; // 10 sec duration
+    SystemTask::getInstance().sendRequest(req);
+    
+    if (m_onScanProgress) m_onScanProgress(m_scanState, m_scanProgress);
 }
 
 void VanguardEngine::stopScan() {
-    WiFi.scanDelete();
-    BruceBLE::getInstance().stopScan();
+    SystemRequest req;
+    req.cmd = SysCommand::WIFI_SCAN_STOP;
+    SystemTask::getInstance().sendRequest(req);
+    
+    req.cmd = SysCommand::BLE_SCAN_STOP;
+    SystemTask::getInstance().sendRequest(req);
+    
     m_scanState = ScanState::IDLE;
     m_combinedScan = false;
+}
+
+// =============================================================================
+// EVENT HANDLING (From Core 0)
+// =============================================================================
+
+void VanguardEngine::handleSystemEvent(const SystemEvent& evt) {
+    switch (evt.type) {
+        case SysEventType::WIFI_SCAN_COMPLETE:
+        {
+            int count = (int)(intptr_t)evt.data;
+            if (Serial) Serial.printf("[Engine] WiFi Scan Complete: %d\n", count);
+            
+            // Process results (using Core 1 WiFi API access - safe here?)
+            // We assume SystemTask is NOT calling scanDelete yet.
+            processScanResults(count);
+            
+            // If combined, start BLE scan
+            if (m_combinedScan) {
+                m_scanState = ScanState::BLE_SCANNING;
+                SystemRequest req;
+                req.cmd = SysCommand::BLE_SCAN_START;
+                req.payload = (void*)(uintptr_t)10000; // 10s
+                SystemTask::getInstance().sendRequest(req);
+            } else {
+                m_scanState = ScanState::COMPLETE;
+                m_scanProgress = 100;
+            }
+            break;
+        }
+        
+        case SysEventType::BLE_DEVICE_FOUND:
+        {
+            BLEDeviceInfo* dev = (BLEDeviceInfo*)evt.data;
+            // Add to table
+            // We need to map BLEDeviceInfo to Target
+            Target target;
+            memset(&target, 0, sizeof(Target));
+            target.type = TargetType::BLE_DEVICE;
+            memcpy(target.bssid, dev->address, 6);
+            strncpy(target.ssid, dev->name, SSID_MAX_LEN);
+            target.rssi = dev->rssi;
+            target.firstSeenMs = dev->lastSeenMs;
+            target.lastSeenMs = dev->lastSeenMs;
+            
+            m_targetTable.addOrUpdate(target);
+            break;
+        }
+        
+        case SysEventType::BLE_SCAN_COMPLETE:
+        {
+            if (Serial) Serial.println("[Engine] BLE Scan Complete");
+            m_scanState = ScanState::COMPLETE;
+            m_scanProgress = 100;
+            break;
+        }
+
+        case SysEventType::ASSOCIATION_FOUND:
+        {
+            AssociationEvent* assoc = (AssociationEvent*)evt.data;
+            if (m_targetTable.addAssociation(assoc->station, assoc->bssid)) {
+                FeedbackManager::getInstance().pulse(50);
+            }
+            if (evt.isPointer) delete assoc;
+            break;
+        }
+
+        case SysEventType::ACTION_PROGRESS:
+        {
+            ActionProgress* prog = (ActionProgress*)evt.data;
+            m_actionProgress = *prog; // Copy progress
+            if (m_onActionProgress) m_onActionProgress(m_actionProgress);
+            if (evt.isPointer) delete prog;
+            break;
+        }
+
+        case SysEventType::ACTION_COMPLETE:
+        {
+            m_actionActive = false;
+            m_actionProgress.result = (ActionResult)(intptr_t)evt.data;
+            if (m_onActionProgress) m_onActionProgress(m_actionProgress);
+            break;
+        }
+        
+        default:
+            break;
+    }
+    
+    if (m_onScanProgress) m_onScanProgress(m_scanState, m_scanProgress);
 }
 
 bool VanguardEngine::isCombinedScan() const {
@@ -614,11 +589,11 @@ bool VanguardEngine::executeAction(ActionType action, const Target& target) {
     m_actionProgress.result = ActionResult::IN_PROGRESS;
     m_actionProgress.packetsSent = 0;
     m_actionProgress.elapsedMs = 0;
-    m_actionProgress.statusText = nullptr;
+    m_actionProgress.statusText = "Starting...";
     m_actionStartMs = millis();
     m_actionActive = true;
 
-    // Check for 5GHz limitation (ESP32 can only transmit on 2.4GHz)
+    // Check for 5GHz limitation
     if (target.channel > 14) {
         m_actionProgress.result = ActionResult::FAILED_NOT_SUPPORTED;
         m_actionProgress.statusText = "5GHz not supported";
@@ -626,205 +601,33 @@ bool VanguardEngine::executeAction(ActionType action, const Target& target) {
         return false;
     }
 
-    BruceWiFi& wifi = BruceWiFi::getInstance();
-
-    switch (action) {
-        case ActionType::DEAUTH_SINGLE:
-        case ActionType::DEAUTH_ALL: {
-            if (!wifi.init()) {
-                m_actionProgress.result = ActionResult::FAILED_HARDWARE;
-                m_actionProgress.statusText = "WiFi init failed";
-                m_actionActive = false;
-                return false;
-            }
-
-            m_actionProgress.statusText = "Sending deauth...";
-
-            bool success = wifi.deauthAll(target.bssid, target.channel);
-            if (!success) {
-                m_actionProgress.result = ActionResult::FAILED_HARDWARE;
-                m_actionProgress.statusText = "Deauth start failed";
-                m_actionActive = false;
-                return false;
-            }
-
-            if (Serial) {
-                Serial.printf("[Attack] Deauth on ch%d\n", target.channel);
-            }
-            return true;
-        }
-
-        case ActionType::BEACON_FLOOD: {
-            if (!wifi.init()) {
-                m_actionProgress.result = ActionResult::FAILED_HARDWARE;
-                m_actionProgress.statusText = "WiFi init failed";
-                m_actionActive = false;
-                return false;
-            }
-
-            m_actionProgress.statusText = "Beacon flood...";
-
-            static const char* fakeSSIDs[] = {
-                "Free WiFi", "xfinity", "ATT-WiFi", "NETGEAR",
-                "linksys", "FBI Van", "Virus.exe", "GetYourOwn"
-            };
-
-            bool success = wifi.beaconFlood(fakeSSIDs, 8, target.channel);
-            if (!success) {
-                m_actionProgress.result = ActionResult::FAILED_HARDWARE;
-                m_actionProgress.statusText = "Beacon start failed";
-                m_actionActive = false;
-                return false;
-            }
-            return true;
-        }
-
-        case ActionType::BLE_SPAM: {
-            BruceBLE& ble = BruceBLE::getInstance();
-            if (!ble.init()) {
-                m_actionProgress.result = ActionResult::FAILED_HARDWARE;
-                m_actionProgress.statusText = "BLE init failed";
-                m_actionActive = false;
-                return false;
-            }
-
-            m_actionProgress.statusText = "BLE spam...";
-            bool success = ble.startSpam(BLESpamType::RANDOM);
-            if (!success) {
-                m_actionProgress.result = ActionResult::FAILED_HARDWARE;
-                m_actionProgress.statusText = "BLE spam failed";
-                m_actionActive = false;
-                return false;
-            }
-            if (Serial) {
-                Serial.println("[Attack] BLE spam started");
-            }
-            return true;
-        }
-
-        case ActionType::BLE_SOUR_APPLE: {
-            BruceBLE& ble = BruceBLE::getInstance();
-            if (!ble.init()) {
-                m_actionProgress.result = ActionResult::FAILED_HARDWARE;
-                m_actionProgress.statusText = "BLE init failed";
-                m_actionActive = false;
-                return false;
-            }
-
-            m_actionProgress.statusText = "Sour Apple...";
-            bool success = ble.startSpam(BLESpamType::SOUR_APPLE);
-            if (!success) {
-                m_actionProgress.result = ActionResult::FAILED_HARDWARE;
-                m_actionProgress.statusText = "Sour Apple failed";
-                m_actionActive = false;
-                return false;
-            }
-            if (Serial) {
-                Serial.println("[Attack] Sour Apple started");
-            }
-            return true;
-        }
-
-        case ActionType::EVIL_TWIN: {
-            // Use the new Evil Portal (full captive portal with credential capture)
-            EvilPortal& portal = EvilPortal::getInstance();
-
-            m_actionProgress.statusText = "Starting evil portal...";
-
-            // Stop any existing portal first
-            if (portal.isRunning()) {
-                portal.stop();
-            }
-
-            // Start with generic template (could add template selection later)
-            bool success = portal.start(target.ssid, target.channel, PortalTemplate::GENERIC_WIFI);
-            if (!success) {
-                m_actionProgress.result = ActionResult::FAILED_HARDWARE;
-                m_actionProgress.statusText = "Portal failed to start";
-                m_actionActive = false;
-                return false;
-            }
-
-            if (Serial) {
-                Serial.printf("[Attack] Evil Portal started: %s\n", target.ssid);
-            }
-            return true;
-        }
-
-        case ActionType::CAPTURE_HANDSHAKE: {
-            if (!wifi.init()) {
-                m_actionProgress.result = ActionResult::FAILED_HARDWARE;
-                m_actionProgress.statusText = "WiFi init failed";
-                m_actionActive = false;
-                return false;
-            }
-
-            m_actionProgress.statusText = "Capturing handshake...";
-            
-            // Create filename based on BSSID
-            char filename[64];
-            snprintf(filename, sizeof(filename), "/captures/handshake_%02X%02X%02X.pcap",
-                     target.bssid[3], target.bssid[4], target.bssid[5]);
-            
-            // Enable PCAP logging
-            wifi.setPcapLogging(true, filename);
-
-            // Start deauth to force a handshake
-            bool success = wifi.deauthAll(target.bssid, target.channel);
-            if (!success) {
-                wifi.setPcapLogging(false);
-                m_actionProgress.result = ActionResult::FAILED_HARDWARE;
-                m_actionProgress.statusText = "Deauth start failed";
-                m_actionActive = false;
-                return false;
-            }
-
-            if (Serial) {
-                Serial.printf("[Attack] Handshake capture started on %s\n", filename);
-            }
-            return true;
-        }
-
-        case ActionType::IR_REPLAY: {
-            m_actionProgress.statusText = "Recording IR...";
-            BruceIR::getInstance().startRecording();
-            return true;
-        }
-
-        case ActionType::IR_TVBGONE: {
-            m_actionProgress.statusText = "Spamming power...";
-            BruceIR::getInstance().sendTVBGone();
-            return true;
-        }
-
-        default:
-            m_actionProgress.result = ActionResult::FAILED_NOT_SUPPORTED;
-            m_actionProgress.statusText = "Not implemented";
-            m_actionActive = false;
-            return false;
-    }
+    // Allocate Request Payload
+    ActionRequest* req = new ActionRequest();
+    req->type = action;
+    req->target = target; // Copy target
+    
+    // Send Request
+    SystemRequest sysReq;
+    sysReq.cmd = SysCommand::ACTION_START;
+    sysReq.payload = req;
+    sysReq.freeCb = [](void* p) { delete (ActionRequest*)p; };
+    
+    SystemTask::getInstance().sendRequest(sysReq);
+    
+    return true;
 }
 
 void VanguardEngine::stopAction() {
-    BruceWiFi& wifi = BruceWiFi::getInstance();
-    wifi.stopHardwareActivities();
-
-    // Also stop BLE attacks if running
-    BruceBLE& ble = BruceBLE::getInstance();
-    ble.stopHardwareActivities();
-
-    // Stop Evil Portal if running
-    EvilPortal& portal = EvilPortal::getInstance();
-    if (portal.isRunning()) {
-        portal.stop();
-    }
+    SystemRequest req;
+    req.cmd = SysCommand::ACTION_STOP;
+    SystemTask::getInstance().sendRequest(req);
 
     m_actionActive = false;
     m_actionProgress.result = ActionResult::CANCELLED;
-    m_actionProgress.statusText = "Stopped";
+    m_actionProgress.statusText = "Stopping...";
 
     if (Serial) {
-        Serial.println("[Attack] Stopped");
+        Serial.println("[Attack] Stopping action...");
     }
 }
 
@@ -841,55 +644,8 @@ void VanguardEngine::onActionProgress(ActionProgressCallback cb) {
 }
 
 void VanguardEngine::tickAction() {
-    if (!m_actionActive) return;
-
-    BruceWiFi& wifi = BruceWiFi::getInstance();
-    wifi.tick();
-
-    // Also tick IR for recording
-    BruceIR::getInstance().tick();
-
-    // Also tick BLE for BLE attacks
-    BruceBLE& ble = BruceBLE::getInstance();
-    ble.tick();
-
-    // Tick Evil Portal if running
-    EvilPortal& portal = EvilPortal::getInstance();
-    if (portal.isRunning()) {
-        portal.tick();
-
-        // Update status with credential count
-        size_t credCount = portal.getCredentialCount();
-        int clientCount = portal.getClientCount();
-        if (credCount > 0) {
-            static char statusBuf[48];
-            snprintf(statusBuf, sizeof(statusBuf), "Portal: %d clients, %d creds",
-                     clientCount, (int)credCount);
-            m_actionProgress.statusText = statusBuf;
-        } else {
-            static char statusBuf[32];
-            snprintf(statusBuf, sizeof(statusBuf), "Portal: %d clients", clientCount);
-            m_actionProgress.statusText = statusBuf;
-        }
-    }
-
-    // Update progress from either WiFi or BLE
-    uint32_t wifiPackets = wifi.getPacketsSent();
-    uint32_t blePackets = ble.getAdvertisementsSent();
-    m_actionProgress.packetsSent = wifiPackets + blePackets;
-    m_actionProgress.elapsedMs = millis() - m_actionStartMs;
-
-    // Special handling for handshake capture status
-    if (m_actionProgress.type == ActionType::CAPTURE_HANDSHAKE) {
-        static char statusBuf[48];
-        snprintf(statusBuf, sizeof(statusBuf), "Sniffing... (EAPOL: %u)", (unsigned int)wifi.getEapolCount());
-        m_actionProgress.statusText = statusBuf;
-    }
-
-    // Report progress
-    if (m_onActionProgress) {
-        m_onActionProgress(m_actionProgress);
-    }
+    // Logic moved to System Task (Core 0)
+    // We update via IPC events now.
 }
 
 // =============================================================================

@@ -13,6 +13,7 @@
 
 #include <M5Cardputer.h>
 #include "Theme.h"
+#include "CanvasManager.h"
 
 namespace Vanguard {
 

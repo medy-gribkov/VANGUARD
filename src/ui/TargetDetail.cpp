@@ -7,6 +7,7 @@
 
 #include "TargetDetail.h"
 #include <M5Cardputer.h>
+#include "CanvasManager.h"
 
 namespace Vanguard {
 
@@ -21,7 +22,7 @@ TargetDetail::TargetDetail(VanguardEngine& engine, const Target& target)
     , m_actionConfirmed(false)
     , m_confirmedAction(ActionType::NONE)
     , m_resultMessage(nullptr)
-    , m_canvas(nullptr)
+    , m_canvas(&CanvasManager::getInstance().getCanvas())
     , m_lastRenderMs(0)
 {
     yield();  // Feed watchdog before potentially slow operations
@@ -31,12 +32,6 @@ TargetDetail::TargetDetail(VanguardEngine& engine, const Target& target)
 
     yield();  // Feed watchdog
 
-    // Create sprite for double buffering
-    m_canvas = new M5Canvas(&M5Cardputer.Display);
-    if (m_canvas) {
-        m_canvas->createSprite(Theme::SCREEN_WIDTH, Theme::SCREEN_HEIGHT);
-    }
-
     if (Serial) {
         Serial.printf("[Detail] Created for target '%s' with %d actions\n",
                       target.ssid, (int)m_actions.size());
@@ -44,11 +39,7 @@ TargetDetail::TargetDetail(VanguardEngine& engine, const Target& target)
 }
 
 TargetDetail::~TargetDetail() {
-    if (m_canvas) {
-        m_canvas->deleteSprite();
-        delete m_canvas;
-        m_canvas = nullptr;
-    }
+    // m_canvas is shared, do not delete
 }
 
 // =============================================================================

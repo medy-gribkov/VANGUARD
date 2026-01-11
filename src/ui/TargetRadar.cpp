@@ -24,7 +24,7 @@ TargetRadar::TargetRadar(VanguardEngine& engine)
     , m_needsRedraw(true)
     , m_show5GHzWarning(false)
     , m_pending5GHzTarget()
-    , m_canvas(nullptr)
+    , m_canvas(&CanvasManager::getInstance().getCanvas())
 {
     // Default filter: show everything
     m_filter.showAccessPoints = true;
@@ -34,18 +34,10 @@ TargetRadar::TargetRadar(VanguardEngine& engine)
     m_filter.showOpen = true;
     m_filter.showSecured = true;
     m_filter.minRssi = -100;
-
-    // Create sprite for double buffering
-    m_canvas = new M5Canvas(&M5Cardputer.Display);
-    m_canvas->createSprite(Theme::SCREEN_WIDTH, Theme::SCREEN_HEIGHT);
 }
 
 TargetRadar::~TargetRadar() {
-    if (m_canvas) {
-        m_canvas->deleteSprite();
-        delete m_canvas;
-        m_canvas = nullptr;
-    }
+    // m_canvas is shared, do not delete
 }
 
 // =============================================================================

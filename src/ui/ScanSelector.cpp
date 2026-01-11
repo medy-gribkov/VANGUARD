@@ -5,6 +5,7 @@
  */
 
 #include "ScanSelector.h"
+#include "CanvasManager.h"
 
 namespace Vanguard {
 
@@ -12,20 +13,14 @@ ScanSelector::ScanSelector()
     : m_visible(false)
     , m_needsRedraw(true)
     , m_selection(ScanChoice::NONE)
-    , m_canvas(nullptr)
+    , m_canvas(&CanvasManager::getInstance().getCanvas())
     , m_lastRenderMs(0)
     , m_animFrame(0)
 {
-    m_canvas = new M5Canvas(&M5Cardputer.Display);
-    m_canvas->createSprite(Theme::SCREEN_WIDTH, Theme::SCREEN_HEIGHT);
 }
 
 ScanSelector::~ScanSelector() {
-    if (m_canvas) {
-        m_canvas->deleteSprite();
-        delete m_canvas;
-        m_canvas = nullptr;
-    }
+    // m_canvas is shared, do not delete
 }
 
 void ScanSelector::show() {
@@ -97,13 +92,13 @@ void ScanSelector::render() {
     int16_t optionY = 62;
     int16_t optionSpacing = 22;
 
-    drawOption(optionY, "R", "WiFi Scan", Theme::COLOR_ACCENT);
+    drawOption(optionY, "R", "Discovery", Theme::COLOR_ACCENT);
     optionY += optionSpacing;
 
-    drawOption(optionY, "B", "Bluetooth Scan", Theme::COLOR_ACCENT);
+    drawOption(optionY, "B", "Targeting", Theme::COLOR_ACCENT);
     optionY += optionSpacing;
 
-    drawOption(optionY, "OK", "Full Scan", Theme::COLOR_ACCENT_BRIGHT);
+    drawOption(optionY, "OK", "Full Discovery", Theme::COLOR_ACCENT_BRIGHT);
 
     // Footer
     m_canvas->fillRect(0, Theme::SCREEN_HEIGHT - 14, Theme::SCREEN_WIDTH, 14, Theme::COLOR_SURFACE);

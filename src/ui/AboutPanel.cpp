@@ -5,26 +5,20 @@
 
 #include "AboutPanel.h"
 #include <M5Cardputer.h>
+#include "CanvasManager.h"
 
 namespace Vanguard {
 
 AboutPanel::AboutPanel()
     : m_visible(false)
     , m_wantsBack(false)
-    , m_canvas(nullptr)
+    , m_canvas(&CanvasManager::getInstance().getCanvas())
     , m_lastRenderMs(0)
 {
-    // Create sprite for double buffering
-    m_canvas = new M5Canvas(&M5Cardputer.Display);
-    m_canvas->createSprite(Theme::SCREEN_WIDTH, Theme::SCREEN_HEIGHT);
 }
 
 AboutPanel::~AboutPanel() {
-    if (m_canvas) {
-        m_canvas->deleteSprite();
-        delete m_canvas;
-        m_canvas = nullptr;
-    }
+    // m_canvas is shared, do not delete
 }
 
 void AboutPanel::show() {

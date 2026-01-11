@@ -5,6 +5,7 @@
 
 #include "SettingsPanel.h"
 #include <M5Cardputer.h>
+#include "CanvasManager.h"
 
 namespace Vanguard {
 
@@ -13,27 +14,20 @@ SettingsPanel::SettingsPanel()
     , m_highlightIndex(0)
     , m_wantsBack(false)
     , m_needsRedraw(true)
-    , m_canvas(nullptr)
+    , m_canvas(&CanvasManager::getInstance().getCanvas())
     , m_lastRenderMs(0)
 {
-    m_canvas = new M5Canvas(&M5Cardputer.Display);
-    m_canvas->createSprite(Theme::SCREEN_WIDTH, Theme::SCREEN_HEIGHT);
-
     initSettings();
 }
 
 SettingsPanel::~SettingsPanel() {
-    if (m_canvas) {
-        m_canvas->deleteSprite();
-        delete m_canvas;
-        m_canvas = nullptr;
-    }
+    // m_canvas is shared, do not delete
 }
 
 void SettingsPanel::initSettings() {
-    // WiFi scan duration (seconds)
+    // Discovery scan duration (seconds)
     m_settings.push_back({
-        "WiFi Scan Time",
+        "Discovery Time",
         "Scan duration in seconds",
         SettingType::NUMBER,
         5,      // default 5 sec
@@ -42,9 +36,9 @@ void SettingsPanel::initSettings() {
         1       // step
     });
 
-    // BLE scan duration (seconds)
+    // Targeting scan duration (seconds)
     m_settings.push_back({
-        "BLE Scan Time",
+        "Targeting Time",
         "Scan duration in seconds",
         SettingType::NUMBER,
         3,      // default 3 sec

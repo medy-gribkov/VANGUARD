@@ -30,6 +30,7 @@
 #include "../core/VanguardTypes.h"
 #include "../core/VanguardEngine.h"
 #include "Theme.h"
+#include "CanvasManager.h"
 #include <vector>
 
 namespace Vanguard {
@@ -182,7 +183,8 @@ private:
     Target               m_pending5GHzTarget; // Target waiting for user confirmation
 
     // Double buffer sprite
-    M5Canvas*            m_canvas;
+    // Shared canvas from manager
+    M5Canvas*            m_canvas; // Pointer to the shared canvas, not owned
 
     // Rendering constants
     static constexpr int HEADER_HEIGHT      = Theme::HEADER_HEIGHT;

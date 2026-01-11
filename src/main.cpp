@@ -11,6 +11,7 @@
 
 #include <M5Cardputer.h>
 #include <esp_task_wdt.h>
+#include <Wire.h>
 #include "core/VanguardEngine.h"
 #include "core/SystemTask.h"
 #include "ui/SafeMode.h"
@@ -60,7 +61,6 @@ enum class AppState {
 
 static AppState g_state = AppState::INITIALIZING;
 static uint32_t g_lastKeyMs = 0;  // Debounce
-#include <Wire.h>
 static constexpr uint32_t KEY_DEBOUNCE_MS = 50;
 static bool g_consumeNextInput = false;  // Prevents key "bleed-through" after menu actions
 
@@ -160,8 +160,6 @@ void setup() {
     // Application State Machine (Core 1)
     g_engine = &VanguardEngine::getInstance();
     g_engine->init();
-    // NOTE: We do NOT call g_engine->init() here anymore. 
-    // It is called in the INITIALIZING state loop.
     
     yield();  // Feed watchdog
     
@@ -177,10 +175,6 @@ void setup() {
 
     FeedbackManager::getInstance().init();
     FeedbackManager::getInstance().beep(2000, 100); // Boot beep
-
-
-    // Start boot sequence
-    // g_boot->begin(); // MOVED to AppState::INITIALIZING
 
     // Safe serial print (only if CDC is connected)
     if (Serial) {
@@ -243,7 +237,6 @@ void loop() {
 
     switch (g_state) {
         case AppState::INITIALIZING:
-            // LAZY INIT: Initialize Engine here, inside the loop
             // LAZY INIT: Initialize Engine here, inside the loop
             if (g_engine) {
                 g_engine->init(); 

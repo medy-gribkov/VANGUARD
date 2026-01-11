@@ -12,7 +12,6 @@
 #include "SDManager.h"
 #include "RadioWarden.h"
 #include "../ui/FeedbackManager.h"
-#include "../ui/FeedbackManager.h"
 #include <M5Cardputer.h>
 #include <WiFi.h>
 #include <cstring>
@@ -68,10 +67,8 @@ bool VanguardEngine::init() {
     // BruceBLE::getInstance().init(); // REMOVED: Truly Lazy now (see BruceBLE::onEnable)
     BruceIR::getInstance().init();
 
-    // REVERT: WiFi Init causes boot loop. Disabling again.
-    // REVERT: WiFi Init causes boot loop. Disabling again.
+    // REVERT: WiFi Init causes boot loop. Disabling for lazy init.
     // M5Cardputer.Display.println("Engine: Warden [LAZY]");
-    // RadioWarden::getInstance().requestRadio(RadioOwner::OWNER_WIFI_STA); 
     // RadioWarden::getInstance().requestRadio(RadioOwner::OWNER_WIFI_STA); 
     
     m_initialized = true;

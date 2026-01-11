@@ -76,9 +76,10 @@ pio run -t upload
 ## 🛠️ Roadmap (Alpha 1.x)
 - [x] **Core Engine**: Lazy Loading & Stability
 - [x] **Input System**: Native driver handling
-- [ ] **PCAP Buffering**: Save handshakes to SD
+- [x] **PCAP Buffering**: Save handshakes to SD (Verified)
+- [x] **IR Blaster**: TV-B-Gone & Receiver (Verified)
 - [ ] **BadUSB**: HID Rubber Ducky scripts
-- [ ] **IR Blaster**: Universal Remote (Learning Mode)
+- [ ] **PMKID Capture**: Offline cracking support
 
 ---
 

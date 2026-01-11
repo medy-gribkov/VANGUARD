@@ -14,6 +14,7 @@
 #include <Wire.h>
 #include "core/VanguardEngine.h"
 #include "core/SystemTask.h"
+#include "core/SystemMonitor.h"
 #include "ui/SafeMode.h"
 #include "ui/BootSequence.h"
 #include "ui/ScanSelector.h"
@@ -156,6 +157,7 @@ void setup() {
     // Start Background System Task (Core 0)
     // This handles all WiFi/BLE operations to prevent UI freezing
     Vanguard::SystemTask::getInstance().start();
+    Vanguard::SystemMonitor::getInstance().start();
 
     // Application State Machine (Core 1)
     g_engine = &VanguardEngine::getInstance();

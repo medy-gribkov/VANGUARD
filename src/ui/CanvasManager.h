@@ -26,7 +26,17 @@ public:
      */
     M5Canvas& getCanvas() {
         if (!m_spriteCreated) {
-            m_canvas.createSprite(Theme::SCREEN_WIDTH, Theme::SCREEN_HEIGHT);
+            m_canvas.setColorDepth(16); // 16-bit color (RGB565)
+            // m_canvas.setPsram(true); // Explicitly use PSRAM if available
+            // Note: M5GFX usually auto-allocates from PSRAM for large sprites if available,
+            // but setting it true ensures it. M5Cardputer has PSRAM.
+            
+            // Try to create sprite
+            void* ptr = m_canvas.createSprite(Theme::SCREEN_WIDTH, Theme::SCREEN_HEIGHT);
+            if (!ptr) {
+                // Fallback to smaller or SRAM if failed (shouldn't happen on S3)
+                if (Serial) Serial.println("[Canvas] Failed to alloc shared sprite!");
+            }
             m_spriteCreated = true;
         }
         return m_canvas;

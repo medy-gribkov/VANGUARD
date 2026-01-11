@@ -43,6 +43,9 @@ jobs:
       - name: Run Unit Tests
         run: pio test -e native
 
+      - name: Check Code Quality (Cppcheck)
+        run: pio check --fail-on-defect=high --skip-packages
+
       - name: Check Memory Usage
         run: |
           echo "### Memory Usage Report" >> $GITHUB_STEP_SUMMARY

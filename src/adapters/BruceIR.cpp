@@ -22,7 +22,7 @@ bool BruceIR::init() {
     // RX pin is defined via IrReceiver.begin(RX_PIN)
     
     IrSender.begin(44);
-    // IrReceiver.begin(43, ENABLE_LED_FEEDBACK); // DISABLED: Cardputer has no RX, causes crash
+    IrReceiver.begin(43, ENABLE_LED_FEEDBACK); // Enable RX on pin 43
 
     if (Serial) {
         Serial.println("[IR] Initialized (TX:44, RX:43)");
@@ -62,9 +62,34 @@ void BruceIR::sendTVBGone() {
     
     if (Serial) Serial.println("[IR] Running TV-B-Gone sequence...");
     
-    // Placeholder for actual TV-B-Gone pulse sequence
-    // In a real implementation, we would loop through multiple power codes
-    // For now, we'll just send a generic "Samsung/LG Power" raw burst if we had it
+    // Common Power Codes
+    
+    // 1. NEC: Samsung Power
+    // Address: 0x0707, Command: 0x02
+    IrSender.sendNEC(0x0707, 0x02, 1);
+    delay(50);
+    
+    // 2. NEC: LG Power
+    // Address: 0x04, Command: 0x08
+    IrSender.sendNEC(0x04, 0x08, 1);
+    delay(50);
+
+    // 3. Sony: Power (12-bit)
+    // Address: 0x01, Command: 0x15
+    IrSender.sendSony(0x01, 0x15, 2, 12); // 2 repeats
+    delay(50);
+    
+    // 4. NEC: Generic Power
+    // Address: 0x00, Command: 0x45
+    IrSender.sendNEC(0x00, 0x45, 1);
+    delay(50);
+
+    // 5. RC5: Philips Power
+    // Address: 0x00, Command: 0x0C
+    IrSender.sendRC5(0x00, 0x0C, 0, 1);
+    delay(50);
+
+    if (Serial) Serial.println("[IR] TV-B-Gone sequence complete.");
 }
 
 void BruceIR::startRecording() {

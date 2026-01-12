@@ -50,6 +50,13 @@ using ScanProgressCallback = std::function<void(ScanState state, uint8_t percent
  */
 using ActionProgressCallback = std::function<void(const ActionProgress& progress)>;
 
+struct WidsAlertState {
+    WidsEventType type;
+    int count;
+    uint32_t timestamp;
+    bool active;
+};
+
 // =============================================================================
 // VanguardEngine Class
 // =============================================================================
@@ -226,6 +233,16 @@ public:
      */
     bool hasIR() const;
 
+    /**
+     * @brief Get active WIDS alert
+     */
+    const WidsAlertState& getWidsAlert() const;
+
+    /**
+     * @brief Clear active WIDS alert
+     */
+    void clearWidsAlert();
+
 private:
     VanguardEngine();
     ~VanguardEngine();
@@ -237,6 +254,9 @@ private:
     bool           m_actionActive;
     ActionProgress m_actionProgress;
     bool           m_combinedScan;  // true if BLE should chain after WiFi
+    
+    // WIDS
+    WidsAlertState m_widsAlert;
 
     // Components
     TargetTable    m_targetTable;

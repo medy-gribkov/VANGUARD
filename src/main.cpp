@@ -23,6 +23,8 @@
 #include "ui/MainMenu.h"
 #include "ui/SettingsPanel.h"
 #include "ui/AboutPanel.h"
+#include "ui/AboutPanel.h"
+#include "ui/SpectrumView.h"
 #include "ui/Theme.h"
 #include "ui/FeedbackManager.h"
 
@@ -46,6 +48,7 @@ static TargetDetail*   g_detail       = nullptr;
 static MainMenu*       g_menu         = nullptr;
 static SettingsPanel*  g_settings     = nullptr;
 static AboutPanel*     g_about        = nullptr;
+static SpectrumView*   g_spectrum     = nullptr;
 
 enum class AppState {
     INITIALIZING,    // New state for lazy loading
@@ -55,6 +58,7 @@ enum class AppState {
     RADAR,
     TARGET_DETAIL,
     ATTACKING,
+    SPECTRUM_ANALYZER,
     SETTINGS,
     ABOUT,           // About dialog
     ERROR
@@ -209,6 +213,11 @@ void loop() {
             case MenuAction::RESCAN_BLE:
                 g_engine->beginBLEScan();
                 setAppState(AppState::SCANNING);
+                break;
+            case MenuAction::SPECTRUM:
+                if (!g_spectrum) g_spectrum = new SpectrumView();
+                g_spectrum->show();
+                setAppState(AppState::SPECTRUM_ANALYZER);
                 break;
             case MenuAction::SETTINGS:
                 if (g_settings) {
@@ -365,13 +374,28 @@ void loop() {
                 if (!g_engine->isActionActive()) {
                     setAppState(AppState::TARGET_DETAIL);
                 }
-                // Check if user cancelled
                 if (g_detail->wantsBack()) {
                     g_engine->stopAction();
                     setAppState(AppState::TARGET_DETAIL);
                 }
             }
             break;
+
+        case AppState::SPECTRUM_ANALYZER:
+             if (g_spectrum) {
+                 g_spectrum->handleInput();
+                 g_spectrum->tick();
+                 g_spectrum->render();
+                 
+                 // Handle exit (Q or Backspace)
+                 if (M5Cardputer.Keyboard.isKeyPressed('q') || M5Cardputer.Keyboard.isKeyPressed('Q') || M5Cardputer.Keyboard.isKeyPressed(KEY_BACKSPACE)) {
+                      g_spectrum->hide();
+                      setAppState(AppState::RADAR);
+                 }
+             } else {
+                 setAppState(AppState::RADAR);
+             }
+             break;
 
         case AppState::SETTINGS:
             if (g_settings) {

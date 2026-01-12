@@ -46,6 +46,8 @@ VanguardEngine::VanguardEngine()
     m_actionProgress.type = ActionType::NONE;
     m_actionProgress.result = ActionResult::SUCCESS;
     m_actionProgress.packetsSent = 0;
+    m_widsAlert.active = false;
+    m_widsAlert.count = 0;
 }
 
 VanguardEngine::~VanguardEngine() {
@@ -83,6 +85,25 @@ bool VanguardEngine::init() {
     BruceWiFi::getInstance().onAssociation([this](const uint8_t* client, const uint8_t* ap) {
         if (this->m_targetTable.addAssociation(client, ap)) {
              FeedbackManager::getInstance().pulse(50); // Feedback on client discovery
+        }
+    });
+
+    // Wire up WIDS Alerts
+    BruceWiFi::getInstance().onWidsAlert([this](WidsEventType type, int count) {
+        m_widsAlert.type = type;
+        m_widsAlert.count = count;
+        m_widsAlert.timestamp = millis();
+        m_widsAlert.active = true;
+        
+        // Audio Feedback
+        if (type == WidsEventType::DEAUTH_FLOOD) {
+             FeedbackManager::getInstance().beep(4000, 200); 
+        } else {
+             FeedbackManager::getInstance().beep(2000, 500);
+        }
+        
+        if (Serial) {
+             Serial.printf("[WIDS] Alert! Type %d Count %d\n", (int)type, count);
         }
     });
 
@@ -531,7 +552,7 @@ void VanguardEngine::processBLEScanResults() {
         strncpy(target.ssid, device.name, SSID_MAX_LEN);
         target.ssid[SSID_MAX_LEN] = '\0';
 
-        target.type = TargetType::BLE_DEVICE;
+        target.type = device.isSuspicious ? TargetType::BLE_SKIMMER : TargetType::BLE_DEVICE;
         target.channel = 0;  // BLE doesn't use WiFi channels
         target.rssi = device.rssi;
         target.security = SecurityType::UNKNOWN;  // BLE security is different
@@ -682,6 +703,14 @@ bool VanguardEngine::hasRF() const {
 
 bool VanguardEngine::hasIR() const {
     return true;
+}
+
+const WidsAlertState& VanguardEngine::getWidsAlert() const {
+    return m_widsAlert;
+}
+
+void VanguardEngine::clearWidsAlert() {
+    m_widsAlert.active = false;
 }
 
 } // namespace Vanguard

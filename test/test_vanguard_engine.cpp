@@ -32,3 +32,18 @@ TEST_F(VanguardEngineTest, ScanStateTransitions) {
     // Since we didn't mock SystemTask's logic deeply, we just check if it's not crashing
     EXPECT_TRUE(engine.isCombinedScan());
 }
+TEST_F(VanguardEngineTest, ExecuteDeauthAction) {
+    engine.init();
+    Target t;
+    memset(&t, 0, sizeof(Target));
+    strcpy(t.ssid, "TestTarget");
+    t.type = TargetType::ACCESS_POINT;
+    t.channel = 6;
+    
+    // Execute action
+    EXPECT_TRUE(engine.executeAction(ActionType::DEAUTH_ALL, t));
+    
+    // Check state (Engine should handle this via IPC events, but we can check if it's active)
+    EXPECT_TRUE(engine.isActionActive());
+    EXPECT_EQ(engine.getActionProgress().type, ActionType::DEAUTH_ALL);
+}

@@ -269,6 +269,9 @@ void BruceBLE::ScanCallbacks::onResult(NimBLEAdvertisedDevice* device) {
         }
     }
 
+    // Check for skimmer signature
+    info.isSuspicious = m_parent->isLikelySkimmer(info);
+
     // Check if we already have this device
     bool found = false;
     for (auto& existing : m_parent->m_devices) {

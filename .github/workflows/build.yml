@@ -46,13 +46,22 @@ jobs:
       - name: Check Code Quality (Cppcheck)
         run: pio check --fail-on-defect=high --skip-packages
 
-      - name: Check Memory Usage
+      - name: Build Firmware
+        run: pio run
+
+      - name: Binary Analysis
         run: |
-          echo "### Memory Usage Report" >> $GITHUB_STEP_SUMMARY
-          pio run --target size | grep -E "Data|BSS|RAM" >> $GITHUB_STEP_SUMMARY
+          echo "### Binary Analysis" >> $GITHUB_STEP_SUMMARY
+          echo "| Artifact | Size (Bytes) |" >> $GITHUB_STEP_SUMMARY
+          echo "|----------|--------------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Firmware | $(stat -c%s .pio/build/m5stack-cardputer/firmware.bin) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Flash Map | $(stat -c%s partitions_vanguard.csv) |" >> $GITHUB_STEP_SUMMARY
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: firmware_bin
-          path: .pio/build/m5stack-cardputer/firmware.bin
+          name: VANGUARD_Firmware
+          path: |
+            .pio/build/m5stack-cardputer/firmware.bin
+            partitions_vanguard.csv
+

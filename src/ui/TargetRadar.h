@@ -201,6 +201,7 @@ private:
     void renderEmptyState();
     void renderScrollIndicator();
     void render5GHzWarning();  // Warning popup for 5GHz networks
+    void renderWidsAlert(const WidsAlertState& alert); // WIDS Overlay
 
     // Item rendering details
     void drawSignalIndicator(int x, int y, int8_t rssi);

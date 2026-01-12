@@ -23,6 +23,7 @@ enum class MenuAction {
     NONE,
     RESCAN,
     RESCAN_BLE,
+    SPECTRUM,
     SETTINGS,
     ABOUT,
     BACK

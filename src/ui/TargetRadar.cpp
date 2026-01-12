@@ -59,6 +59,12 @@ void TargetRadar::tick() {
     if (m_highlightIndex >= 0 && m_highlightIndex < (int)m_targets.size()) {
         FeedbackManager::getInstance().updateGeiger(m_targets[m_highlightIndex].rssi);
     }
+    
+    // Check WIDS Alert
+    const auto& alert = m_engine.getWidsAlert();
+    if (alert.active) {
+         m_needsRedraw = true;
+    }
 }
 
 void TargetRadar::render() {
@@ -151,6 +157,16 @@ void TargetRadar::render() {
     // Render 5GHz warning popup if active (on top of everything)
     if (m_show5GHzWarning) {
         render5GHzWarning();
+    }
+
+    // WIDS Overlay
+    const auto& alert = m_engine.getWidsAlert();
+    if (alert.active) {
+        if (millis() - alert.timestamp > 5000) {
+             m_engine.clearWidsAlert();
+        } else {
+             renderWidsAlert(alert);
+        }
     }
 
     // Push sprite to display in one operation (no flicker!)
@@ -249,14 +265,15 @@ void TargetRadar::renderTargetItemToCanvas(const Target& target, int y, bool hig
     }
 
     // Type icon (WiFi or BLE)
-    bool isBLE = (target.type == TargetType::BLE_DEVICE);
+    bool isBLE = (target.type == TargetType::BLE_DEVICE || target.type == TargetType::BLE_SKIMMER);
     if (isBLE) {
         // BLE icon - simplified "B" shape
-        m_canvas->fillRect(x + 6, y + 4, 2, 17, Theme::COLOR_TYPE_BLE);
-        m_canvas->drawLine(x + 8, y + 4, x + 12, y + 8, Theme::COLOR_TYPE_BLE);
-        m_canvas->drawLine(x + 12, y + 8, x + 8, y + 12, Theme::COLOR_TYPE_BLE);
-        m_canvas->drawLine(x + 8, y + 12, x + 12, y + 16, Theme::COLOR_TYPE_BLE);
-        m_canvas->drawLine(x + 12, y + 16, x + 8, y + 20, Theme::COLOR_TYPE_BLE);
+        uint16_t iconColor = (target.type == TargetType::BLE_SKIMMER) ? Theme::COLOR_DANGER : Theme::COLOR_TYPE_BLE;
+        m_canvas->fillRect(x + 6, y + 4, 2, 17, iconColor);
+        m_canvas->drawLine(x + 8, y + 4, x + 12, y + 8, iconColor);
+        m_canvas->drawLine(x + 12, y + 8, x + 8, y + 12, iconColor);
+        m_canvas->drawLine(x + 8, y + 12, x + 12, y + 16, iconColor);
+        m_canvas->drawLine(x + 12, y + 16, x + 8, y + 20, iconColor);
     } else {
         // WiFi signal bars (4 bars)
         uint16_t signalColor = Theme::getSignalColor(target.rssi);
@@ -295,9 +312,15 @@ void TargetRadar::renderTargetItemToCanvas(const Target& target, int y, bool hig
     // Second line: Security/Type + Channel/Status
     if (isBLE) {
         // BLE device - show type indicator
-        m_canvas->setTextColor(Theme::COLOR_TYPE_BLE, bgColor);
-        m_canvas->setTextDatum(TL_DATUM);
-        m_canvas->drawString("BLE", x + 24, y + 14);
+        if (target.type == TargetType::BLE_SKIMMER) {
+            m_canvas->setTextColor(Theme::COLOR_DANGER, bgColor);
+            m_canvas->setTextDatum(TL_DATUM);
+            m_canvas->drawString("SKIMMER", x + 24, y + 14);
+        } else {
+            m_canvas->setTextColor(Theme::COLOR_TYPE_BLE, bgColor);
+            m_canvas->setTextDatum(TL_DATUM);
+            m_canvas->drawString("BLE", x + 24, y + 14);
+        }
 
         // Show connectable status
         m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED, bgColor);
@@ -587,6 +610,33 @@ void TargetRadar::render5GHzWarning() {
     m_canvas->drawString("[ENTER] View Info", centerX - 50, centerY + 30);
     m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED);
     m_canvas->drawString("[Q] Cancel", centerX + 60, centerY + 30);
+}
+
+void TargetRadar::renderWidsAlert(const WidsAlertState& alert) {
+    int16_t w = 220;
+    int16_t h = 70;
+    int16_t x = (Theme::SCREEN_WIDTH - w) / 2;
+    int16_t y = (Theme::SCREEN_HEIGHT - h) / 2;
+    
+    // Flashing Alert Box
+    bool flash = (millis() / 250) % 2 == 0;
+    uint16_t bgColor = flash ? Theme::COLOR_DANGER : Theme::COLOR_SURFACE;
+    uint16_t fgColor = flash ? Theme::COLOR_TEXT_PRIMARY : Theme::COLOR_DANGER;
+    
+    m_canvas->fillRoundRect(x, y, w, h, 6, bgColor);
+    m_canvas->drawRoundRect(x, y, w, h, 6, Theme::COLOR_TEXT_PRIMARY);
+    
+    m_canvas->setTextSize(2);
+    m_canvas->setTextDatum(MC_DATUM);
+    m_canvas->setTextColor(fgColor);
+    
+    const char* title = (alert.type == WidsEventType::DEAUTH_FLOOD) ? "DEAUTH ATTACK!" : "EAPOL FLOOD!";
+    m_canvas->drawString(title, Theme::SCREEN_WIDTH/2, y + 25);
+    
+    m_canvas->setTextSize(1);
+    char buf[32];
+    snprintf(buf, sizeof(buf), "Intensity: %d pps", alert.count);
+    m_canvas->drawString(buf, Theme::SCREEN_WIDTH/2, y + 50);
 }
 
 } // namespace Vanguard

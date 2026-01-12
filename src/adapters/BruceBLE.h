@@ -78,6 +78,7 @@ struct BLEDeviceInfo {
     uint16_t     manufacturerId;
     uint8_t      manufacturerData[32];
     uint8_t      manufacturerDataLen;
+    bool         isSuspicious;   // Flagged by detection logic
 };
 
 // =============================================================================

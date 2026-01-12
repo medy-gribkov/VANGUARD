@@ -21,6 +21,7 @@ MainMenu::MainMenu()
     // Setup menu items
     m_items.push_back({"Rescan WiFi", MenuAction::RESCAN});
     m_items.push_back({"Scan BLE", MenuAction::RESCAN_BLE});
+    m_items.push_back({"Spectrum Viewer", MenuAction::SPECTRUM});
     m_items.push_back({"Settings", MenuAction::SETTINGS});
     m_items.push_back({"About", MenuAction::ABOUT});
     m_items.push_back({"Close Menu", MenuAction::BACK});

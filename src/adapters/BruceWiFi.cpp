@@ -101,6 +101,9 @@ BruceWiFi::BruceWiFi()
     , m_evilTwinChannel(1)
     , m_evilTwinDeauth(false)
     , m_pcapWriter(nullptr)
+    , m_deauthCount(0)
+    , m_eapolCount(0)
+    , m_lastWidsCheckMs(0)
 {
     memset(m_attackTargetMac, 0, 6);
     memset(m_attackApMac, 0, 6);
@@ -149,6 +152,27 @@ void BruceWiFi::shutdown() {
 }
 
 void BruceWiFi::onTick() {
+    // WIDS Background Check (every 1 second)
+    // Only check if promiscuous mode is active and we are not attacking (to avoid self-trigger)
+    if (m_promiscuousEnabled && m_state != WiFiAdapterState::DEAUTHING && m_state != WiFiAdapterState::BEACON_FLOODING) {
+        uint32_t now = millis();
+        if (now - m_lastWidsCheckMs >= 1000) {
+            // Check thresholds
+            // > 10 deauths/sec = Flood
+            if (m_deauthCount > 10) {
+                if (m_onWidsAlert) m_onWidsAlert(WidsEventType::DEAUTH_FLOOD, m_deauthCount);
+            }
+            // > 20 EAPOLs/sec = Flood possibly
+            if (m_eapolCount > 20) {
+                if (m_onWidsAlert) m_onWidsAlert(WidsEventType::EAPOL_FLOOD, m_eapolCount);
+            }
+            // Reset counters for next second
+            m_deauthCount = 0;
+            m_eapolCount = 0;
+            m_lastWidsCheckMs = now;
+        }
+    }
+
     switch (m_state) {
         case WiFiAdapterState::SCANNING:
             tickScan();
@@ -598,6 +622,10 @@ void BruceWiFi::onAttackProgress(AttackProgressCallback cb) {
     m_onAttackProgress = cb;
 }
 
+void BruceWiFi::onWidsAlert(WidsCallback cb) {
+    m_onWidsAlert = cb;
+}
+
 // =============================================================================
 // LOW-LEVEL
 // =============================================================================
@@ -676,6 +704,18 @@ void BruceWiFi::promiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t type)
     // Forward to packet callback if registered
     if (s_instance->m_onPacketReceived) {
         s_instance->m_onPacketReceived(payload, len, rssi);
+    }
+
+    // [PHASE 2.2] WIDS Detection
+    // Check for Deauth frames (Mgmt type, subtype 0xC = Deauth, 0xA = Disassoc)
+    if (type == WIFI_PKT_MGMT) {
+        // Frame Control is first 2 bytes. 
+        // 0xC0 = Deauth, 0xA0 = Disassoc (assuming little endian payload[0])
+        // Mask 0xFC to check type/subtype
+        uint8_t subtype = payload[0];
+        if (subtype == 0xC0 || subtype == 0xA0) {
+            s_instance->m_deauthCount++;
+        }
     }
 
     // [PHASE 3.1] Client Discovery Implementation

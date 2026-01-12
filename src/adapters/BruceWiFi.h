@@ -23,9 +23,12 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_wifi.h>
+#include <functional>
+#include <atomic>
 #include "../core/VanguardTypes.h"
 #include "../core/VanguardModule.h"
-#include <functional>
+
+
 
 namespace Vanguard {
 
@@ -71,12 +74,15 @@ struct ScanResultEntry {
 // CALLBACKS
 // =============================================================================
 
+// WIDS Events (Moved to VanguardTypes.h)
+
 using ScanCompleteCallback = std::function<void(int networkCount)>;
 using AttackProgressCallback = std::function<void(uint32_t packetsSent)>;
 using HandshakeCapturedCallback = std::function<void(const uint8_t* bssid)>;
 using CredentialCapturedCallback = std::function<void(const char* ssid, const char* password)>;
 using PacketCallback = std::function<void(const uint8_t* payload, uint16_t len, int8_t rssi)>;
 using AssociationCallback = std::function<void(const uint8_t* clientMac, const uint8_t* apMac)>;
+using WidsCallback = std::function<void(WidsEventType type, int count)>;
 
 // =============================================================================
 // BruceWiFi Adapter Class
@@ -360,12 +366,6 @@ public:
 
     /**
      * @brief Send raw 802.11 frame
-     *
-     * Direct wrapper for esp_wifi_80211_tx().
-     *
-     * @param frame Frame buffer
-     * @param len Frame length
-     * @return true if sent successfully
      */
     bool sendRawFrame(const uint8_t* frame, size_t len);
 
@@ -379,15 +379,27 @@ public:
      */
     bool setPromiscuous(bool enable);
 
+    /**
+     * @brief Set WIDS Alert Callback
+     */
+    void onWidsAlert(WidsCallback cb);
+
 private:
     BruceWiFi();
     ~BruceWiFi();
 
-    // State
-    WiFiAdapterState   m_state;
-    bool               m_initialized;
-    bool               m_promiscuousEnabled;
-    uint8_t            m_currentChannel;
+    static void promiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t type);
+
+
+    
+    // Internal state
+    bool m_initialized;
+    bool m_enabled;
+    WiFiAdapterState m_state;
+    uint8_t m_currentChannel;
+
+    // Scan state
+    bool m_promiscuousEnabled;
 
     // Attack state
     uint32_t           m_packetsSent;
@@ -405,7 +417,13 @@ private:
     CredentialCapturedCallback m_onCredentialCaptured;
     PacketCallback            m_onPacketReceived;
     AssociationCallback       m_onAssociation;
-    uint32_t                  m_eapolCount;
+    
+    // WIDS State
+    WidsCallback              m_onWidsAlert;
+    std::atomic<uint32_t>     m_deauthCount;
+    // m_eapolCount is tracked for WIDS too
+    std::atomic<uint32_t>     m_eapolCount;
+    uint32_t                  m_lastWidsCheckMs;
 
     // Beacon flood state (moved from file-scope statics)
     const char**              m_beaconSsids;
@@ -435,10 +453,11 @@ private:
                           const char* ssid, const uint8_t* bssid,
                           uint8_t channel);
 
-    // Promiscuous callback (static for C API)
-    static void promiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t type);
+public:
     static BruceWiFi* s_instance;  // For static callback access
 };
+
+
 
 } // namespace Vanguard
 

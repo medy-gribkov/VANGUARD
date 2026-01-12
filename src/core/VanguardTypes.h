@@ -45,6 +45,7 @@ enum class TargetType : uint8_t {
     STATION,          // WiFi Client device
     BLE_DEVICE,       // Bluetooth LE device
     BLE_BEACON,       // iBeacon/Eddystone
+    BLE_SKIMMER,      // Detected Skimmer
     RF_DEVICE,        // Sub-GHz device (if supported)
     IR_DEVICE         // Infrared device
 };
@@ -105,6 +106,16 @@ enum class ActionType : uint8_t {
 
     // Meta
     NONE
+};
+
+/**
+ * @brief WIDS Alert Types
+ */
+enum class WidsEventType : uint8_t {
+    DEAUTH_FLOOD,
+    EAPOL_FLOOD,
+    KRACK_ATTACK,     // Future
+    EVIL_TWIN_DETECT  // Future
 };
 
 /**

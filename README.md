@@ -4,7 +4,7 @@
   <h3>Target-First Wireless Auditing Suite for M5Cardputer</h3>
 
   <p>
-    <a href="https://github.com/Mahdy-gribkov/Task-Oriented-Assesor/actions"><img src="https://img.shields.io/github/actions/workflow/status/Mahdy-gribkov/Task-Oriented-Assesor/build.yml?style=for-the-badge&label=BUILD" alt="Build Status"></a>
+    <a href="https://github.com/Mahdy-gribkov/VANGUARD/actions"><img src="https://img.shields.io/github/actions/workflow/status/Mahdy-gribkov/VANGUARD/build.yml?style=for-the-badge&label=BUILD" alt="Build Status"></a>
     <img src="https://img.shields.io/badge/Platform-ESP32--S3-blue?style=for-the-badge&logo=espressif" alt="Platform ESP32">
     <img src="https://img.shields.io/badge/Version-v1.1--ALPHA-orange?style=for-the-badge" alt="Version">
     <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License">
@@ -45,15 +45,15 @@ Built on the legendary **Bruce** firmware logic, instantiated for specific tacti
 - SD Card (Optional, for PCAP storage)
 
 ### Installation (The Easy Way)
-1.  Go to **[Releases](https://github.com/Mahdy-gribkov/Task-Oriented-Assesor/releases)**.
+1.  Go to **[Releases](https://github.com/Mahdy-gribkov/VANGUARD/releases)**.
 2.  Download the latest `firmware.bin`.
 3.  Flash using [M5Burner](https://m5stack.com/pages/download) or [Esptool](https://github.com/espressif/esptool).
 
 ### Installation (The "Genius" Way)
 Clone the repo and build it yourself.
 ```bash
-git clone https://github.com/Mahdy-gribkov/Task-Oriented-Assesor.git
-cd Task-Oriented-Assesor
+git clone https://github.com/Mahdy-gribkov/VANGUARD.git
+cd VANGUARD
 pio run -t upload
 ```
 

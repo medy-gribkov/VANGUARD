@@ -156,11 +156,17 @@ bool BruceBLE::beginScan(uint32_t durationMs) {
     m_scanStartMs = millis();
     m_scanDurationMs = durationMs;
 
-    m_scanner->start(0, false);
+    // Configure scan timing to control heap usage
+    m_scanner->setActiveScan(true);
+    m_scanner->setInterval(100);
+    m_scanner->setWindow(80);
+
+    // Let NimBLE manage duration internally (safer than manual timeout alone)
+    m_scanner->start(durationMs / 1000, false);
     m_state = BLEAdapterState::SCANNING;
 
     if (Serial) {
-        Serial.printf("[BLE] Scan started (%ums)\n", durationMs);
+        Serial.printf("[BLE] Scan started (%ums, %us NimBLE)\n", durationMs, durationMs / 1000);
     }
 
     return true;
@@ -218,6 +224,8 @@ void BruceBLE::onScanComplete(BLEScanCompleteCallback cb) {
 
 void BruceBLE::tickScan() {
     if (!m_scanner) return;  // Safety check
+
+    yield();  // Feed watchdog during scan
 
     // Check for timeout
     uint32_t elapsed = millis() - m_scanStartMs;
@@ -295,7 +303,7 @@ void BruceBLE::ScanCallbacks::onResult(NimBLEAdvertisedDevice* device) {
             break;
         }
     }
-    if (!found) {
+    if (!found && m_parent->m_devices.size() < 32) {
         m_parent->m_devices.push_back(info);
         isNew = true;
     }

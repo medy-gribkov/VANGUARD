@@ -68,6 +68,15 @@ const ActionResolver::ActionDefinition ActionResolver::s_actionDefs[] = {
         SecurityType::WPA3_SAE  // Incompatible with WPA3
     },
     {
+        ActionType::PROBE_FLOOD,
+        "Probe Flood",
+        "Flood channel with fake probes",
+        true,
+        TargetType::ACCESS_POINT,
+        false,
+        SecurityType::UNKNOWN
+    },
+    {
         ActionType::CAPTURE_HANDSHAKE,
         "Capture Handshake",
         "4-way WPA handshake",
@@ -96,7 +105,16 @@ const ActionResolver::ActionDefinition ActionResolver::s_actionDefs[] = {
         false,
         SecurityType::UNKNOWN
     },
-    
+    {
+        ActionType::BLE_SKIMMER_DETECT,
+        "Skimmer Detect",
+        "Scan for suspicious BLE devices",
+        false,
+        TargetType::BLE_DEVICE,
+        false,
+        SecurityType::UNKNOWN
+    },
+
     // IR Actions
     {
         ActionType::IR_REPLAY,
@@ -270,11 +288,13 @@ bool ActionResolver::isImplemented(ActionType action) const {
         case ActionType::IR_TVBGONE:
             return true;
 
+        case ActionType::MONITOR:
+        case ActionType::CAPTURE_PMKID:
+        case ActionType::PROBE_FLOOD:
+        case ActionType::BLE_SKIMMER_DETECT:
+            return true;
+
         // NOT IMPLEMENTED - don't show to user
-        case ActionType::MONITOR:            // Not routed
-        case ActionType::CAPTURE_PMKID:      // Not routed
-        case ActionType::PROBE_FLOOD:        // Not implemented
-        case ActionType::BLE_SKIMMER_DETECT: // Not implemented
         default:
             return false;
     }

@@ -92,11 +92,8 @@ void AboutPanel::render() {
     m_canvas->drawString("ESP32-S3 / M5Stack Cardputer", centerX, y);
 
     // Footer - close hint
-    m_canvas->setTextColor(Theme::COLOR_TEXT_PRIMARY);
-    m_canvas->setTextDatum(TC_DATUM);
-    m_canvas->drawString("VANGUARD", Theme::SCREEN_WIDTH / 2, 8);
-    m_canvas->setTextColor(Theme::COLOR_ACCENT); // Restore color for the actual footer
-    m_canvas->setTextDatum(BC_DATUM); // Restore datum for the actual footer
+    m_canvas->setTextColor(Theme::COLOR_ACCENT);
+    m_canvas->setTextDatum(BC_DATUM);
     m_canvas->drawString("[Any key] Close", centerX, Theme::SCREEN_HEIGHT - 4);
 
     // Push to display

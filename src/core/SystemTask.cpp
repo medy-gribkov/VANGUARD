@@ -384,6 +384,36 @@ void SystemTask::handleActionStart(ActionRequest* req) {
              }
              break;
 
+        case ActionType::PROBE_FLOOD:
+             if (wifi.init()) {
+                 success = wifi.startProbeFlood(t.channel);
+             }
+             break;
+
+        case ActionType::MONITOR:
+             if (wifi.init()) {
+                 success = wifi.startMonitor(t.channel);
+             }
+             break;
+
+        case ActionType::CAPTURE_PMKID:
+             if (wifi.init()) {
+                 char filename[64];
+                 snprintf(filename, sizeof(filename), "/captures/pmkid_%02X%02X%02X.pcap",
+                          t.bssid[3], t.bssid[4], t.bssid[5]);
+                 wifi.setPcapLogging(true, filename);
+                 success = wifi.captureHandshake(t.bssid, t.channel, false); // false = don't send deauths
+             }
+             break;
+
+        case ActionType::BLE_SKIMMER_DETECT:
+             if (ble.init()) {
+                 // Run a quick scan, then check for skimmers
+                 ble.beginScan(5000);
+                 success = true; // Detection happens during scan via isLikelySkimmer()
+             }
+             break;
+
         default:
             sendEvent(SysEventType::ERROR_OCCURRED, (void*)"Action not supported", 0, false);
             return;

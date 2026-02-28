@@ -55,9 +55,19 @@ void TargetDetail::tick() {
 
         if (m_progress.result != ActionResult::IN_PROGRESS) {
             m_result = m_progress.result;
-            m_resultMessage = (m_result == ActionResult::SUCCESS)
-                ? "Attack complete"
-                : (m_progress.statusText[0] != '\0') ? m_progress.statusText : "Attack failed";
+            if (m_result == ActionResult::SUCCESS) {
+                // Build a contextual success message with the action name
+                if (m_actionIndex >= 0 && m_actionIndex < (int)m_actions.size()) {
+                    snprintf(m_resultBuf, sizeof(m_resultBuf), "%s completed", m_actions[m_actionIndex].label);
+                    m_resultMessage = m_resultBuf;
+                } else {
+                    m_resultMessage = "Action completed";
+                }
+            } else if (m_result == ActionResult::CANCELLED) {
+                m_resultMessage = "Stopped by user";
+            } else {
+                m_resultMessage = (m_progress.statusText[0] != '\0') ? m_progress.statusText : "Action failed";
+            }
             transitionTo(DetailViewState::RESULT);
         }
     }

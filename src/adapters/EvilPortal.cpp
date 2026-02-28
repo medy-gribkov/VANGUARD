@@ -404,6 +404,17 @@ bool EvilPortal::start(const char* ssid, uint8_t channel, PortalTemplate tmpl) {
         if (Serial) {
             Serial.println("[EvilPortal] Failed to start AP!");
         }
+        // Clean up any previously allocated resources to prevent leaks
+        if (m_webServer) {
+            m_webServer->end();
+            delete m_webServer;
+            m_webServer = nullptr;
+        }
+        if (m_dnsServer) {
+            m_dnsServer->stop();
+            delete m_dnsServer;
+            m_dnsServer = nullptr;
+        }
         WiFi.mode(WIFI_STA);
         return false;
     }

@@ -164,6 +164,7 @@ private:
     ActionProgress              m_progress;
     ActionResult                m_result;
     const char*                 m_resultMessage;
+    char                        m_resultBuf[48];
 
     // Double buffer sprite
     M5Canvas*                   m_canvas;

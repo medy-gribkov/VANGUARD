@@ -120,32 +120,30 @@ void SpectrumView::render() {
 }
 
 void SpectrumView::drawGrid() {
-    // Bottom axis
-    m_canvas->drawFastHLine(0, Theme::SCREEN_HEIGHT - 20, Theme::SCREEN_WIDTH, Theme::COLOR_TEXT_MUTED);
-    
-    // Channel markers
+    // Bottom axis (raised to make room for key hints)
+    int axisY = Theme::SCREEN_HEIGHT - 26;
+    m_canvas->drawFastHLine(0, axisY, Theme::SCREEN_WIDTH, Theme::COLOR_TEXT_MUTED);
+
+    // Channel number labels
     int barW = (Theme::SCREEN_WIDTH - 20) / CHANNELS;
     int startX = 10;
-    
+
     m_canvas->setTextSize(1);
     m_canvas->setTextDatum(TC_DATUM);
     m_canvas->setTextColor(Theme::COLOR_TEXT_SECONDARY);
-    
+
     for (int i = 1; i <= CHANNELS; i++) {
         int x = startX + (i - 1) * barW + barW/2;
-        // Only draw odd numbers to save space
-        if (i % 2 != 0 || i == 14) {
-             m_canvas->drawFastVLine(x, Theme::SCREEN_HEIGHT - 20, 5, Theme::COLOR_TEXT_MUTED);
-             m_canvas->drawNumber(i, x, Theme::SCREEN_HEIGHT - 14);
-        }
+        m_canvas->drawFastVLine(x, axisY, 3, Theme::COLOR_TEXT_MUTED);
+        m_canvas->drawNumber(i, x, axisY + 4);
     }
 }
 
 void SpectrumView::drawBars() {
     int barW = (Theme::SCREEN_WIDTH - 20) / CHANNELS;
     int startX = 10;
-    int bottomY = Theme::SCREEN_HEIGHT - 20;
-    int maxH = Theme::SCREEN_HEIGHT - 40;
+    int bottomY = Theme::SCREEN_HEIGHT - 26;
+    int maxH = Theme::SCREEN_HEIGHT - 50;
     
     for (int i = 1; i <= CHANNELS; i++) {
         int x = startX + (i - 1) * barW + 1;
@@ -181,20 +179,33 @@ void SpectrumView::drawBars() {
 }
 
 void SpectrumView::drawInfo() {
+    // Title
     m_canvas->setTextSize(1);
     m_canvas->setTextDatum(TL_DATUM);
     m_canvas->setTextColor(Theme::COLOR_ACCENT);
-    m_canvas->drawString("SPECTRUM ANALYZER", 4, 4);
-    
+    m_canvas->drawString("2.4GHz Channel Activity", 4, 4);
+
+    // Current channel (prominent) or PAUSED
     m_canvas->setTextDatum(TR_DATUM);
-    m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED);
     if (m_paused) {
+        m_canvas->setTextColor(Theme::COLOR_WARNING);
         m_canvas->drawString("PAUSED", Theme::SCREEN_WIDTH - 4, 4);
     } else {
         char buf[20];
         snprintf(buf, sizeof(buf), "CH %d", m_currentChannel);
+        m_canvas->setTextColor(Theme::COLOR_TEXT_PRIMARY);
         m_canvas->drawString(buf, Theme::SCREEN_WIDTH - 4, 4);
     }
+
+    // Y-axis label
+    m_canvas->setTextDatum(TL_DATUM);
+    m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED);
+    m_canvas->drawString("Packets/s", 4, 14);
+
+    // Key hints at bottom
+    m_canvas->setTextDatum(BC_DATUM);
+    m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED);
+    m_canvas->drawString("[Enter] Pause  [Q] Exit", Theme::SCREEN_WIDTH / 2, Theme::SCREEN_HEIGHT - 1);
 }
 
 } // namespace Vanguard

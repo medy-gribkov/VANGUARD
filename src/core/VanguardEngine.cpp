@@ -421,8 +421,8 @@ void VanguardEngine::tickTransition() {
 
 
         case 2:
-            // Step 2: Wait 100ms for radio to fully stop
-            if (elapsed >= 100) {
+            // Step 2: Wait 50ms for radio to fully stop (BLE shutdown is instant when not running)
+            if (elapsed >= 50) {
                 BruceBLE& ble = BruceBLE::getInstance();
                 ble.shutdown();
                 m_transitionStep = 3;
@@ -448,11 +448,23 @@ void VanguardEngine::tickTransition() {
                 BruceBLE& ble = BruceBLE::getInstance();
                 m_bleInitAttempts++;
 
+                // Show progress movement so user knows it's not stuck
+                m_scanProgress = 48 + m_bleInitAttempts;
+                if (m_onScanProgress) {
+                    m_onScanProgress(m_scanState, m_scanProgress);
+                }
+
                 if (Serial) {
                     Serial.printf("[Trans] Step 4: BLE init attempt %d\n", m_bleInitAttempts);
                 }
 
+                uint32_t initStart = millis();
                 bool initOk = ble.init();
+                uint32_t initElapsed = millis() - initStart;
+
+                if (Serial) {
+                    Serial.printf("[Trans] BLE init took %ums\n", initElapsed);
+                }
 
                 if (initOk) {
                     // Success! Start BLE scan
@@ -495,8 +507,8 @@ void VanguardEngine::tickTransition() {
             break;
 
         case 100:
-            // Wait state: wait 100ms before retrying BLE init
-            if (elapsed >= 100) {
+            // Wait state: wait 200ms between retries for stable radio state
+            if (elapsed >= 200) {
                 m_transitionStep = 4;
                 m_transitionStartMs = millis();
             }

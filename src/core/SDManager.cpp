@@ -1,5 +1,6 @@
 #include "SDManager.h"
 #include <M5Cardputer.h>
+#include <SPI.h>
 
 namespace Vanguard {
 
@@ -19,6 +20,11 @@ bool SDManager::init() {
     // CS: 12, MOSI: 14, SCK: 40, MISO: 39
     
     if (Serial) Serial.println("[SD] Mounting...");
+
+    // Configure SPI with correct Cardputer SD pins BEFORE SD.begin().
+    // Without this, SPI.begin() uses default ESP32-S3 FSPI pins where MOSI=GPIO11,
+    // which conflicts with the TCA8418 keyboard interrupt on GPIO 11.
+    SPI.begin(40, 39, 14, 12);  // SCK=40, MISO=39, MOSI=14, CS=12
 
     // Try to mount SD
     if (!SD.begin(12, SPI, 40000000)) {

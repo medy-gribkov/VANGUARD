@@ -10,7 +10,6 @@
  */
 
 #include <M5Cardputer.h>
-#include <M5Unified.hpp>
 #include <esp_task_wdt.h>
 #include "core/VanguardEngine.h"
 #include "core/SystemTask.h"
@@ -68,6 +67,10 @@ static uint32_t g_lastKeyMs = 0;  // Debounce
 static constexpr uint32_t KEY_DEBOUNCE_MS = 50;
 static bool g_consumeNextInput = false;  // Prevents key "bleed-through" after menu actions
 
+// Keyboard state captured once per frame (prevents isChange() double-consumption)
+static bool g_kbChange = false;
+static bool g_kbPressed = false;
+
 void setAppState(AppState newState) {
     Serial.printf("[STATE] %d -> %d\n", (int)g_state, (int)newState);
     g_state = newState;
@@ -81,35 +84,25 @@ void setup() {
     // Feed watchdog early
     yield();
 
-    // Initialize M5Cardputer ADV: split keyboard init for I2C timing
-    // The TCA8418 keyboard controller needs In_I2C to be fully ready.
-    // M5.begin() initializes In_I2C on GPIO 8/9, but we give it settling time.
+    // Initialize M5Cardputer with keyboard enabled.
+    // The library auto-detects ADV board and uses TCA8418 I2C keyboard.
+    // IMPORTANT: begin(cfg, true) sets _enableKeyboard=true so update() polls keys.
+    // Using false here would silently disable all keyboard updates forever.
     auto cfg = M5.config();
-    M5Cardputer.begin(cfg, false);  // false = skip keyboard init
-    delay(50);                       // Let I2C bus and TCA8418 settle
-
-    // Now initialize keyboard after I2C is stable
-    M5Cardputer.Keyboard.begin();
-
-    // Verify TCA8418 is reachable at 0x34 via In_I2C
-    bool tca_ok = m5::In_I2C.start(0x34, false, 400000);
-    m5::In_I2C.stop();
-
-    if (!tca_ok) {
-        // Force In_I2C re-init and retry
-        m5::In_I2C.release();
-        m5::In_I2C.begin(I2C_NUM_1, 8, 9);
-        delay(50);
-        M5Cardputer.Keyboard.begin();  // Retry keyboard init
-    }
+    M5Cardputer.begin(cfg, true);
+    delay(100);  // Post-init settling for TCA8418
 
     // Feed watchdog after init
     yield();
 
     // Apply theme
+    M5Cardputer.Display.fillScreen(0x0000);
+    M5Cardputer.Display.setTextColor(0xFFFF);
+    M5Cardputer.Display.setFont(&fonts::Font0);
+    M5Cardputer.Display.setTextSize(1);
+
     M5Cardputer.Display.fillScreen(Theme::COLOR_BACKGROUND);
     M5Cardputer.Display.setTextColor(Theme::COLOR_TEXT_PRIMARY);
-    M5Cardputer.Display.setFont(&fonts::Font0);
 
     // KEY CHECK: Safe Mode
     // Check if G0 (BtnA) is held during boot
@@ -118,8 +111,6 @@ void setup() {
         SafeMode::run(); // Blocks forever
     }
 
-    // Start Background System Task (Core 0)
-    // This handles all WiFi/BLE operations to prevent UI freezing
     Vanguard::SystemTask::getInstance().start();
     Vanguard::SystemMonitor::getInstance().start();
 
@@ -164,6 +155,10 @@ void loop() {
     esp_task_wdt_reset();
 
     M5Cardputer.update();  // Read keyboard and buttons
+
+    // Capture keyboard state ONCE per frame (isChange() is stateful, only call once)
+    g_kbChange = M5Cardputer.Keyboard.isChange();
+    g_kbPressed = M5Cardputer.Keyboard.isPressed();
 
     // Handle keyboard input globally
     handleKeyboardInput();
@@ -396,8 +391,8 @@ void loop() {
             M5Cardputer.Display.setTextColor(Theme::COLOR_TEXT_SECONDARY);
             M5Cardputer.Display.drawString("Press any key to restart", Theme::SCREEN_WIDTH / 2, Theme::SCREEN_HEIGHT / 2 + 10);
 
-            // Any key press restarts scanning
-            if (M5Cardputer.Keyboard.isChange() && M5Cardputer.Keyboard.isPressed()) {
+            // Any key press restarts scanning (use captured state)
+            if (g_kbChange && g_kbPressed) {
                 g_engine->beginScan();
                 setAppState(AppState::SCANNING);
             }
@@ -424,10 +419,9 @@ void handleKeyboardInput() {
         return;
     }
 
-    // Must have a key state change AND a key press to process
-    // isChange() is required before isPressed() on M5Cardputer GPIO matrix keyboard
-    if (!M5Cardputer.Keyboard.isChange()) return;
-    if (!M5Cardputer.Keyboard.isPressed()) return;
+    // Use pre-captured keyboard state (isChange() is stateful, only called once in loop())
+    if (!g_kbChange) return;
+    if (!g_kbPressed) return;
 
     // Debounce: prevent rapid-fire key events
     uint32_t now = millis();

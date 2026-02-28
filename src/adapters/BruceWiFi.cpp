@@ -728,6 +728,9 @@ void BruceWiFi::promiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t type)
     uint16_t len = pkt->rx_ctrl.sig_len;
     int8_t rssi = pkt->rx_ctrl.rssi;
 
+    // Minimum 802.11 frame header size (FC + Duration + 3x Addr = 24 bytes)
+    if (len < 24) return;
+
     // [PHASE 3.3] PCAP Logging
     if (s_instance->m_pcapWriter) {
         s_instance->m_pcapWriter->writePacket(payload, len);
@@ -777,6 +780,7 @@ void BruceWiFi::promiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t type)
     // [PHASE 3.1] Client Discovery Implementation
     // We only care about Data frames for client discovery
     if (type == WIFI_PKT_DATA) {
+        if (len < sizeof(wifi_data_frame_header_t)) return;
         wifi_data_frame_header_t* header = (wifi_data_frame_header_t*)payload;
         
         // Extract Frame Control bits
@@ -826,6 +830,7 @@ void BruceWiFi::promiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t type)
         
         // Simpler check: EAPOL frames are small and have a specific structure.
         // We look for 0x88 0x8e in the payload.
+        if (len < 2) return;  // Guard against unsigned underflow on (len - 1)
         for (int i = 0; i < len - 1; i++) {
             if (payload[i] == 0x88 && payload[i+1] == 0x8e) {
                 // Found EAPOL frame

@@ -132,12 +132,12 @@ TEST_F(ActionResolverTest, BLEDeviceGetsBLEActions) {
     EXPECT_FALSE(hasAction(actions, ActionType::BEACON_FLOOD));
 }
 
-TEST_F(ActionResolverTest, BLEDeviceNoSkimmerDetect) {
-    // BLE_SKIMMER_DETECT is not implemented, should not appear
+TEST_F(ActionResolverTest, BLEDeviceHasSkimmerDetect) {
+    // BLE_SKIMMER_DETECT is now implemented and wired up
     Target ble = makeBLEDevice("BLE-Device");
     auto actions = resolver.getActionsFor(ble);
 
-    EXPECT_FALSE(hasAction(actions, ActionType::BLE_SKIMMER_DETECT));
+    EXPECT_TRUE(hasAction(actions, ActionType::BLE_SKIMMER_DETECT));
 }
 
 // =============================================================================
@@ -237,12 +237,12 @@ TEST_F(ActionResolverTest, UnknownActionTypeReturnsInvalid) {
     EXPECT_STREQ(resolver.getInvalidReason(ap, ActionType::NONE), "Unknown action");
 }
 
-TEST_F(ActionResolverTest, UnimplementedActionsNotReturned) {
+TEST_F(ActionResolverTest, NewlyImplementedActionsReturned) {
     Target ap = makeWiFiAP("AP", SecurityType::WPA2_PSK, 3);
     auto actions = resolver.getActionsFor(ap);
 
-    // MONITOR and CAPTURE_PMKID are not implemented
-    EXPECT_FALSE(hasAction(actions, ActionType::MONITOR));
-    EXPECT_FALSE(hasAction(actions, ActionType::CAPTURE_PMKID));
-    EXPECT_FALSE(hasAction(actions, ActionType::PROBE_FLOOD));
+    // MONITOR, CAPTURE_PMKID, and PROBE_FLOOD are now implemented
+    EXPECT_TRUE(hasAction(actions, ActionType::MONITOR));
+    EXPECT_TRUE(hasAction(actions, ActionType::CAPTURE_PMKID));
+    EXPECT_TRUE(hasAction(actions, ActionType::PROBE_FLOOD));
 }

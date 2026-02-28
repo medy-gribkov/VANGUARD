@@ -92,13 +92,13 @@ void ScanSelector::render() {
     int16_t optionY = 62;
     int16_t optionSpacing = 22;
 
-    drawOption(optionY, "R", "Discovery", Theme::COLOR_ACCENT);
+    drawOption(optionY, "R", "WiFi Scan", Theme::COLOR_ACCENT);
     optionY += optionSpacing;
 
-    drawOption(optionY, "B", "Targeting", Theme::COLOR_ACCENT);
+    drawOption(optionY, "B", "BLE Scan", Theme::COLOR_ACCENT);
     optionY += optionSpacing;
 
-    drawOption(optionY, "OK", "Full Discovery", Theme::COLOR_ACCENT_BRIGHT);
+    drawOption(optionY, "OK", "WiFi + BLE", Theme::COLOR_ACCENT_BRIGHT);
 
     // Footer
     m_canvas->fillRect(0, Theme::SCREEN_HEIGHT - 14, Theme::SCREEN_WIDTH, 14, Theme::COLOR_SURFACE);

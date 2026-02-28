@@ -121,6 +121,7 @@ void TargetRadar::render() {
         m_canvas->drawString("[R] Rescan", centerX, centerY + 20);
         m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED);
         m_canvas->drawString("[Q] Quit", centerX, centerY + 35);
+        m_canvas->drawString("[M] Menu", centerX, centerY + 50);
     } else {
         // Target list
         int16_t y = HEADER_HEIGHT + 2;
@@ -152,7 +153,7 @@ void TargetRadar::render() {
     m_canvas->setTextSize(1);
     m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED);
     m_canvas->setTextDatum(BC_DATUM);
-    m_canvas->drawString("[;,] Up  [./] Down  [Enter] Select", Theme::SCREEN_WIDTH / 2, Theme::SCREEN_HEIGHT - 2);
+    m_canvas->drawString("[;,.] Nav  [Enter] Sel  [Q] Back  [M] Menu", Theme::SCREEN_WIDTH / 2, Theme::SCREEN_HEIGHT - 2);
 
     // Render 5GHz warning popup if active (on top of everything)
     if (m_show5GHzWarning) {
@@ -241,6 +242,10 @@ void TargetRadar::renderScanning() {
     } else {
         m_canvas->drawString("Scanning...", centerX, centerY + 30);
     }
+
+    m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED);
+    m_canvas->setTextDatum(BC_DATUM);
+    m_canvas->drawString("[Q] Cancel", Theme::SCREEN_WIDTH / 2, Theme::SCREEN_HEIGHT - 2);
 
     // Push to display
     m_canvas->pushSprite(0, 0);
@@ -565,8 +570,8 @@ void TargetRadar::render5GHzWarning() {
 
     // Explanation (two lines)
     m_canvas->setTextColor(Theme::COLOR_TEXT_SECONDARY);
-    m_canvas->drawString("ESP32 cannot attack 5GHz bands.", centerX, centerY - 2);
-    m_canvas->drawString("Info view only - no attacks.", centerX, centerY + 10);
+    m_canvas->drawString("ESP32-S3 operates on 2.4GHz only.", centerX, centerY - 2);
+    m_canvas->drawString("View target info? No attacks available.", centerX, centerY + 10);
 
     // Action buttons
     m_canvas->setTextColor(Theme::COLOR_ACCENT);
@@ -577,29 +582,32 @@ void TargetRadar::render5GHzWarning() {
 
 void TargetRadar::renderWidsAlert(const WidsAlertState& alert) {
     int16_t w = 220;
-    int16_t h = 70;
+    int16_t h = 80;
     int16_t x = (Theme::SCREEN_WIDTH - w) / 2;
     int16_t y = (Theme::SCREEN_HEIGHT - h) / 2;
-    
+
     // Flashing Alert Box
     bool flash = (millis() / 250) % 2 == 0;
     uint16_t bgColor = flash ? Theme::COLOR_DANGER : Theme::COLOR_SURFACE;
     uint16_t fgColor = flash ? Theme::COLOR_TEXT_PRIMARY : Theme::COLOR_DANGER;
-    
+
     m_canvas->fillRoundRect(x, y, w, h, 6, bgColor);
     m_canvas->drawRoundRect(x, y, w, h, 6, Theme::COLOR_TEXT_PRIMARY);
-    
+
     m_canvas->setTextSize(2);
     m_canvas->setTextDatum(MC_DATUM);
     m_canvas->setTextColor(fgColor);
-    
+
     const char* title = (alert.type == WidsEventType::DEAUTH_FLOOD) ? "DEAUTH ATTACK!" : "EAPOL FLOOD!";
     m_canvas->drawString(title, Theme::SCREEN_WIDTH/2, y + 25);
-    
+
     m_canvas->setTextSize(1);
     char buf[32];
     snprintf(buf, sizeof(buf), "Intensity: %d pps", alert.count);
     m_canvas->drawString(buf, Theme::SCREEN_WIDTH/2, y + 50);
+
+    m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED);
+    m_canvas->drawString("Auto-dismiss in 5s", Theme::SCREEN_WIDTH/2, y + 66);
 }
 
 } // namespace Vanguard

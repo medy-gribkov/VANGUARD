@@ -17,7 +17,7 @@
 $ErrorActionPreference = "Stop"
 
 # Use absolute path found in system check
-$PIO = "C:\Users\User\.platformio\penv\Scripts\pio.exe"
+$PIO = "$env:USERPROFILE\.platformio\penv\Scripts\pio.exe"
 
 function Write-Step { param($msg) Write-Host "`n[VANGUARD] $msg" -ForegroundColor Cyan }
 function Write-Success { param($msg) Write-Host "SUCCESS: $msg" -ForegroundColor Green }
@@ -66,7 +66,7 @@ if ($LASTEXITCODE -eq 0) {
 }
 
 # 4. Monitor
-Write-Step "Starting Neural Link (Serial Monitor)..."
+Write-Step "Starting Serial Monitor..."
 # Wait a brief moment for reset
 Start-Sleep -Seconds 2
 & $PIO device monitor

@@ -130,7 +130,8 @@ enum class ActionResult : uint8_t {
     FAILED_NOT_SUPPORTED,
     FAILED_HARDWARE,
     FAILED_TIMEOUT,
-    CANCELLED
+    CANCELLED,
+    STOPPED
 };
 
 /**

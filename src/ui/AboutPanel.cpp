@@ -92,7 +92,7 @@ void AboutPanel::render() {
     y += 10;
     m_canvas->drawString("ESP32-S3 / M5Stack Cardputer ADV", centerX, y);
     y += 10;
-    m_canvas->drawString("By SporeSec", centerX, y);
+    m_canvas->drawString("By Medy Gribkov", centerX, y);
 
     // Footer
     m_canvas->fillRect(0, Theme::SCREEN_HEIGHT - 14, Theme::SCREEN_WIDTH, 14, Theme::COLOR_SURFACE);

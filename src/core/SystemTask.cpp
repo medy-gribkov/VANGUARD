@@ -25,8 +25,8 @@ SystemTask::SystemTask() :
     // Request Queue: UI -> System (Capacity 10)
     m_reqQueue = xQueueCreate(10, sizeof(SystemRequest));
 
-    // Event Queue: System -> UI (Capacity 20 - events can be bursty)
-    m_evtQueue = xQueueCreate(20, sizeof(SystemEvent));
+    // Event Queue: System -> UI (Capacity 40 - BLE scans generate many device events)
+    m_evtQueue = xQueueCreate(40, sizeof(SystemEvent));
 
     if (!m_reqQueue || !m_evtQueue) {
         if (Serial) Serial.println("[System] FATAL: Queue creation failed");
@@ -101,25 +101,34 @@ void SystemTask::run() {
         // 3. Monitor Status changes and emit events
         if (m_actionActive) {
              uint32_t now = millis();
-             
-             // Check for Action Completion logic
+
              bool completed = false;
              ActionResult result = ActionResult::SUCCESS;
              const char* statusMsg = nullptr;
 
+             // Specific completion checks
              if (m_currentAction == ActionType::CAPTURE_HANDSHAKE) {
                  if (BruceWiFi::getInstance().hasHandshake()) {
                      completed = true;
                      result = ActionResult::SUCCESS;
                      statusMsg = "Handshake Captured!";
-                 } else if (now - m_actionStartTime > 60000) { // 60s timeout
-                     completed = true;
-                     result = ActionResult::FAILED_TIMEOUT;
-                     statusMsg = "Capture timed out";
                  }
              }
 
+             // Generic timeout for all timed actions
+             uint32_t timeout = getActionTimeout(m_currentAction);
+             if (!completed && timeout > 0 && (now - m_actionStartTime > timeout)) {
+                 completed = true;
+                 result = ActionResult::SUCCESS;
+                 uint32_t packets = BruceWiFi::getInstance().getPacketsSent() + BruceBLE::getInstance().getAdvertisementsSent();
+                 statusMsg = getCompletionMessage(m_currentAction, packets, now - m_actionStartTime);
+             }
+
              if (completed) {
+                 // Stop hardware
+                 BruceWiFi::getInstance().stopHardwareActivities();
+                 BruceBLE::getInstance().stopHardwareActivities();
+
                  m_actionActive = false;
                  sendEvent(SysEventType::ACTION_COMPLETE, (void*)(intptr_t)result, 0, false);
                  ActionProgress* finalProg = new ActionProgress();
@@ -127,30 +136,55 @@ void SystemTask::run() {
                  finalProg->startTimeMs = m_actionStartTime;
                  finalProg->elapsedMs = now - m_actionStartTime;
                  finalProg->result = result;
-                 finalProg->packetsSent = BruceWiFi::getInstance().getPacketsSent();
+                 finalProg->packetsSent = BruceWiFi::getInstance().getPacketsSent() + BruceBLE::getInstance().getAdvertisementsSent();
                  strncpy(finalProg->statusText, statusMsg ? statusMsg : "", sizeof(finalProg->statusText) - 1);
                  finalProg->statusText[sizeof(finalProg->statusText) - 1] = '\0';
                  sendEvent(SysEventType::ACTION_PROGRESS, finalProg, sizeof(ActionProgress), true);
              } else if (now - m_lastProgressTime > 500) {
-                  // Send progress update
                   ActionProgress* prog = new ActionProgress();
                   prog->type = m_currentAction;
                   prog->elapsedMs = now - m_actionStartTime;
                   prog->result = ActionResult::IN_PROGRESS;
 
-                  // Get stats
                   uint32_t wifiPackets = BruceWiFi::getInstance().getPacketsSent();
                   uint32_t blePackets = BruceBLE::getInstance().getAdvertisementsSent();
                   prog->packetsSent = wifiPackets + blePackets;
 
-                  // Contextual status text (safe copy into fixed buffer)
-                  if (m_currentAction == ActionType::CAPTURE_HANDSHAKE) {
-                      strncpy(prog->statusText, "Sniffing EAPOL...", sizeof(prog->statusText) - 1);
-                  } else if (m_currentAction == ActionType::EVIL_TWIN) {
-                      snprintf(prog->statusText, sizeof(prog->statusText), "Portal: %d clients",
-                               EvilPortal::getInstance().getClientCount());
-                  } else {
-                      strncpy(prog->statusText, "Attacking...", sizeof(prog->statusText) - 1);
+                  // Per-action status text
+                  switch (m_currentAction) {
+                      case ActionType::CAPTURE_HANDSHAKE:
+                          strncpy(prog->statusText, "Sniffing EAPOL...", sizeof(prog->statusText) - 1);
+                          break;
+                      case ActionType::EVIL_TWIN:
+                          snprintf(prog->statusText, sizeof(prog->statusText), "Portal: %d clients",
+                                   EvilPortal::getInstance().getClientCount());
+                          break;
+                      case ActionType::DEAUTH_ALL:
+                      case ActionType::DEAUTH_SINGLE:
+                          snprintf(prog->statusText, sizeof(prog->statusText), "Deauthing... %u sent", prog->packetsSent);
+                          break;
+                      case ActionType::BEACON_FLOOD:
+                          snprintf(prog->statusText, sizeof(prog->statusText), "Beacons: %u sent", prog->packetsSent);
+                          break;
+                      case ActionType::BLE_SPAM:
+                      case ActionType::BLE_SOUR_APPLE:
+                          snprintf(prog->statusText, sizeof(prog->statusText), "BLE spam: %u ads", prog->packetsSent);
+                          break;
+                      case ActionType::PROBE_FLOOD:
+                          snprintf(prog->statusText, sizeof(prog->statusText), "Probing... %u sent", prog->packetsSent);
+                          break;
+                      case ActionType::MONITOR:
+                          snprintf(prog->statusText, sizeof(prog->statusText), "Monitoring... %u pkts", prog->packetsSent);
+                          break;
+                      case ActionType::CAPTURE_PMKID:
+                          strncpy(prog->statusText, "Waiting for PMKID...", sizeof(prog->statusText) - 1);
+                          break;
+                      case ActionType::BLE_SKIMMER_DETECT:
+                          strncpy(prog->statusText, "Scanning for skimmers...", sizeof(prog->statusText) - 1);
+                          break;
+                      default:
+                          strncpy(prog->statusText, "Running...", sizeof(prog->statusText) - 1);
+                          break;
                   }
                   prog->statusText[sizeof(prog->statusText) - 1] = '\0';
 
@@ -203,6 +237,66 @@ void SystemTask::sendEvent(SysEventType type, void* data, size_t len, bool isPtr
         }
         if (Serial) Serial.println("[System] WARN: Event queue full, dropped event");
     }
+}
+
+// =============================================================================
+// ACTION HELPERS
+// =============================================================================
+
+uint32_t SystemTask::getActionTimeout(ActionType type) const {
+    switch (type) {
+        case ActionType::DEAUTH_ALL:
+        case ActionType::DEAUTH_SINGLE:    return 30000;
+        case ActionType::BEACON_FLOOD:     return 60000;
+        case ActionType::BLE_SPAM:
+        case ActionType::BLE_SOUR_APPLE:   return 30000;
+        case ActionType::PROBE_FLOOD:      return 30000;
+        case ActionType::EVIL_TWIN:        return 300000;
+        case ActionType::CAPTURE_HANDSHAKE:return 60000;
+        case ActionType::CAPTURE_PMKID:    return 90000;
+        case ActionType::MONITOR:          return 120000;
+        case ActionType::BLE_SKIMMER_DETECT: return 6000;
+        case ActionType::IR_REPLAY:
+        case ActionType::IR_TVBGONE:       return 0; // instant
+        default:                           return 30000;
+    }
+}
+
+const char* SystemTask::getCompletionMessage(ActionType type, uint32_t packets, uint32_t elapsed) const {
+    static char buf[64];
+    uint32_t secs = elapsed / 1000;
+    switch (type) {
+        case ActionType::DEAUTH_ALL:
+        case ActionType::DEAUTH_SINGLE:
+            snprintf(buf, sizeof(buf), "%u deauth frames in %us", packets, secs);
+            break;
+        case ActionType::BEACON_FLOOD:
+            snprintf(buf, sizeof(buf), "%u beacons broadcast", packets);
+            break;
+        case ActionType::BLE_SPAM:
+        case ActionType::BLE_SOUR_APPLE:
+            snprintf(buf, sizeof(buf), "%u advertisements sent", packets);
+            break;
+        case ActionType::PROBE_FLOOD:
+            snprintf(buf, sizeof(buf), "%u probes sent in %us", packets, secs);
+            break;
+        case ActionType::MONITOR:
+            snprintf(buf, sizeof(buf), "Captured %u packets", packets);
+            break;
+        case ActionType::EVIL_TWIN:
+            snprintf(buf, sizeof(buf), "Portal served %u clients", packets);
+            break;
+        case ActionType::CAPTURE_PMKID:
+            snprintf(buf, sizeof(buf), "PMKID scan complete (%us)", secs);
+            break;
+        case ActionType::BLE_SKIMMER_DETECT:
+            snprintf(buf, sizeof(buf), "Scan complete: %u suspicious", packets);
+            break;
+        default:
+            snprintf(buf, sizeof(buf), "Complete: %u packets in %us", packets, secs);
+            break;
+    }
+    return buf;
 }
 
 // =============================================================================
@@ -369,7 +463,17 @@ void SystemTask::handleActionStart(ActionRequest* req) {
                  BruceIR& ir = BruceIR::getInstance();
                  if (ir.init()) {
                      ir.replayLast();
-                     success = true;
+                     // Instant complete - IR fires and is done
+                     sendEvent(SysEventType::ACTION_COMPLETE, (void*)(intptr_t)ActionResult::SUCCESS, 0, false);
+                     ActionProgress* prog = new ActionProgress();
+                     prog->type = ActionType::IR_REPLAY;
+                     prog->result = ActionResult::SUCCESS;
+                     prog->elapsedMs = 0;
+                     prog->packetsSent = 1;
+                     strncpy(prog->statusText, "IR signal sent", sizeof(prog->statusText) - 1);
+                     prog->statusText[sizeof(prog->statusText) - 1] = '\0';
+                     sendEvent(SysEventType::ACTION_PROGRESS, prog, sizeof(ActionProgress), true);
+                     return; // Skip m_actionActive = true
                  }
              }
              break;
@@ -379,7 +483,16 @@ void SystemTask::handleActionStart(ActionRequest* req) {
                  BruceIR& ir = BruceIR::getInstance();
                  if (ir.init()) {
                      ir.sendTVBGone();
-                     success = true;
+                     sendEvent(SysEventType::ACTION_COMPLETE, (void*)(intptr_t)ActionResult::SUCCESS, 0, false);
+                     ActionProgress* prog = new ActionProgress();
+                     prog->type = ActionType::IR_TVBGONE;
+                     prog->result = ActionResult::SUCCESS;
+                     prog->elapsedMs = 0;
+                     prog->packetsSent = 1;
+                     strncpy(prog->statusText, "TV-B-Gone complete", sizeof(prog->statusText) - 1);
+                     prog->statusText[sizeof(prog->statusText) - 1] = '\0';
+                     sendEvent(SysEventType::ACTION_PROGRESS, prog, sizeof(ActionProgress), true);
+                     return;
                  }
              }
              break;
@@ -435,7 +548,7 @@ void SystemTask::handleActionStop() {
     BruceWiFi::getInstance().stopHardwareActivities();
     BruceBLE::getInstance().stopHardwareActivities();
     m_actionActive = false;
-    sendEvent(SysEventType::ACTION_COMPLETE, (void*)(intptr_t)ActionResult::CANCELLED, 0, false);
+    sendEvent(SysEventType::ACTION_COMPLETE, (void*)(intptr_t)ActionResult::STOPPED, 0, false);
 }
 
 } // namespace Vanguard

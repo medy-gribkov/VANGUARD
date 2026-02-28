@@ -120,16 +120,6 @@ public:
     void clearActionConfirmation();
 
     /**
-     * @brief Update action progress display
-     */
-    void updateActionProgress(const ActionProgress& progress);
-
-    /**
-     * @brief Show action result
-     */
-    void showResult(ActionResult result, const char* message);
-
-    /**
      * @brief Get station MAC for precision attacks
      */
     void getConfirmedStationMac(uint8_t* mac) const;
@@ -181,9 +171,6 @@ private:
     void renderHeader();
     void renderInfoField(int y, const char* label, const char* value);
     void renderActionItem(const AvailableAction& action, int y, bool selected);
-
-    // Input handling
-    void handleInput();
 
     // State transitions
     void transitionTo(DetailViewState newState);

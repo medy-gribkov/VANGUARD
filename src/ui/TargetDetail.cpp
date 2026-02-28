@@ -47,8 +47,6 @@ TargetDetail::~TargetDetail() {
 // =============================================================================
 
 void TargetDetail::tick() {
-    handleInput();
-
     // Update action progress if executing
     if (m_state == DetailViewState::EXECUTING) {
         m_progress = m_engine.getActionProgress();
@@ -63,8 +61,13 @@ void TargetDetail::tick() {
                 } else {
                     m_resultMessage = "Action completed";
                 }
-            } else if (m_result == ActionResult::CANCELLED) {
-                m_resultMessage = "Stopped by user";
+            } else if (m_result == ActionResult::STOPPED || m_result == ActionResult::CANCELLED) {
+                // Use statusText from progress if available (has packet count info)
+                if (m_progress.statusText[0] != '\0') {
+                    m_resultMessage = m_progress.statusText;
+                } else {
+                    m_resultMessage = "Stopped by user";
+                }
             } else {
                 m_resultMessage = (m_progress.statusText[0] != '\0') ? m_progress.statusText : "Action failed";
             }
@@ -179,7 +182,7 @@ void TargetDetail::select() {
             break;
 
         case DetailViewState::RESULT:
-            m_wantsBack = true;
+            transitionTo(DetailViewState::ACTIONS);
             break;
 
         default:
@@ -206,12 +209,11 @@ void TargetDetail::back() {
             break;
 
         case DetailViewState::EXECUTING:
-            m_engine.stopAction();
-            transitionTo(DetailViewState::ACTIONS);
+            m_wantsBack = true;
             break;
 
         case DetailViewState::RESULT:
-            m_wantsBack = true;
+            transitionTo(DetailViewState::ACTIONS);
             break;
     }
 }
@@ -239,16 +241,6 @@ void TargetDetail::getConfirmedStationMac(uint8_t* mac) const {
     } else {
         memset(mac, 0, 6);
     }
-}
-
-void TargetDetail::updateActionProgress(const ActionProgress& progress) {
-    m_progress = progress;
-}
-
-void TargetDetail::showResult(ActionResult result, const char* message) {
-    m_result = result;
-    m_resultMessage = message;
-    transitionTo(DetailViewState::RESULT);
 }
 
 // =============================================================================
@@ -289,7 +281,7 @@ void TargetDetail::renderHeader() {
 
     // Signal strength on right
     char rssiStr[8];
-    snprintf(rssiStr, sizeof(rssiStr), "%ddB", m_target.rssi);
+    snprintf(rssiStr, sizeof(rssiStr), "%d dBm", m_target.rssi);
     m_canvas->setTextDatum(TR_DATUM);
     m_canvas->setTextColor(Theme::getSignalColor(m_target.rssi));
     m_canvas->drawString(rssiStr, Theme::SCREEN_WIDTH - 4, 3);
@@ -534,47 +526,55 @@ void TargetDetail::renderExecuting() {
     m_canvas->setTextSize(1);
     m_canvas->setTextDatum(MC_DATUM);
 
-    // Status
+    // Status text
     m_canvas->setTextColor(Theme::COLOR_ACCENT);
     m_canvas->drawString(m_progress.statusText[0] ? m_progress.statusText : "Running...",
-                         centerX, centerY - 25);
+                         centerX, centerY - 30);
 
-    // Animated indicator
-    static uint8_t phase = 0;
-    phase = (phase + 1) % 4;
-    char indicator[8];
-    snprintf(indicator, sizeof(indicator), "%.*s", phase + 1, "....");
-    m_canvas->drawString(indicator, centerX, centerY - 10);
+    // Progress bar
+    int16_t barW = 160;
+    int16_t barH = 6;
+    int16_t barX = (Theme::SCREEN_WIDTH - barW) / 2;
+    int16_t barY = centerY - 16;
+    m_canvas->drawRect(barX, barY, barW, barH, Theme::COLOR_SURFACE_RAISED);
+    uint32_t estTimeout = 30000;
+    if (m_progress.elapsedMs > 0) {
+        uint8_t pct = (uint8_t)min((uint32_t)95, m_progress.elapsedMs * 100 / estTimeout);
+        int16_t fillW = (barW - 2) * pct / 100;
+        m_canvas->fillRect(barX + 1, barY + 1, fillW, barH - 2, Theme::COLOR_ACCENT);
+    }
 
     // Packets sent
     char pktStr[32];
     snprintf(pktStr, sizeof(pktStr), "Packets: %u", (unsigned int)m_progress.packetsSent);
     m_canvas->setTextColor(Theme::COLOR_TEXT_PRIMARY);
-    m_canvas->drawString(pktStr, centerX, centerY + 5);
+    m_canvas->drawString(pktStr, centerX, centerY + 2);
 
     // Elapsed time
     char timeStr[32];
     snprintf(timeStr, sizeof(timeStr), "Time: %us", (unsigned int)(m_progress.elapsedMs / 1000));
-    m_canvas->drawString(timeStr, centerX, centerY + 20);
+    m_canvas->drawString(timeStr, centerX, centerY + 16);
 
     // Stop hint
     m_canvas->setTextColor(Theme::COLOR_WARNING);
-    m_canvas->drawString("[Q] Stop Attack", centerX, centerY + 40);
+    m_canvas->setTextDatum(BC_DATUM);
+    m_canvas->drawString("[Q] Stop Attack", centerX, Theme::SCREEN_HEIGHT - 2);
 }
 
 void TargetDetail::renderResult() {
     int16_t centerX = Theme::SCREEN_WIDTH / 2;
     int16_t centerY = Theme::SCREEN_HEIGHT / 2;
 
-    uint16_t color = (m_result == ActionResult::SUCCESS)
-        ? Theme::COLOR_SUCCESS
-        : Theme::COLOR_DANGER;
+    uint16_t color = (m_result == ActionResult::SUCCESS) ? Theme::COLOR_SUCCESS :
+                     (m_result == ActionResult::STOPPED) ? Theme::COLOR_ACCENT :
+                     Theme::COLOR_DANGER;
 
     m_canvas->setTextSize(1);
     m_canvas->setTextDatum(MC_DATUM);
 
     // Result status
     const char* statusLabel = (m_result == ActionResult::SUCCESS) ? "SUCCESS" :
+                              (m_result == ActionResult::STOPPED) ? "STOPPED" :
                               (m_result == ActionResult::CANCELLED) ? "CANCELLED" :
                               (m_result == ActionResult::FAILED_NOT_SUPPORTED) ? "NOT SUPPORTED" :
                               "FAILED";
@@ -597,14 +597,6 @@ void TargetDetail::renderResult() {
     // Continue hint
     m_canvas->setTextColor(Theme::COLOR_ACCENT);
     m_canvas->drawString("[ENTER] Continue", centerX, centerY + 30);
-}
-
-// =============================================================================
-// INPUT HANDLING
-// =============================================================================
-
-void TargetDetail::handleInput() {
-    // Keyboard input is now handled in main.cpp handleKeyboardInput()
 }
 
 // =============================================================================

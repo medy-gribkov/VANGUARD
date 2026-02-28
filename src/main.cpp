@@ -66,6 +66,7 @@ enum class AppState {
 };
 
 static AppState g_state = AppState::INITIALIZING;
+static AppState g_previousState = AppState::RADAR;
 static uint32_t g_lastKeyMs = 0;  // Debounce
 static constexpr uint32_t KEY_DEBOUNCE_MS = 50;
 static bool g_consumeNextInput = false;  // Prevents key "bleed-through" after menu actions
@@ -178,17 +179,20 @@ void loop() {
                 break;
             case MenuAction::SPECTRUM:
                 if (!g_spectrum) break;
+                g_previousState = g_state;
                 g_spectrum->show();
                 setAppState(AppState::SPECTRUM_ANALYZER);
                 break;
             case MenuAction::SETTINGS:
                 if (g_settings) {
+                    g_previousState = g_state;
                     g_settings->show();
                     setAppState(AppState::SETTINGS);
                 }
                 break;
             case MenuAction::ABOUT:
                 if (g_about) {
+                    g_previousState = g_state;
                     g_about->show();
                     setAppState(AppState::ABOUT);
                 }
@@ -350,7 +354,7 @@ void loop() {
                  g_spectrum->render();
                  // Exit handled via handleKeyboardInput() below
              } else {
-                 setAppState(AppState::RADAR);
+                 setAppState(g_previousState);
              }
              break;
 
@@ -363,11 +367,11 @@ void loop() {
                 if (g_settings->wantsBack()) {
                     g_settings->clearBack();
                     g_settings->hide();
-                    setAppState(AppState::RADAR);
+                    setAppState(g_previousState);
                 }
             } else {
                 // Settings failed to initialize, go back
-                setAppState(AppState::RADAR);
+                setAppState(g_previousState);
             }
             break;
 
@@ -380,16 +384,17 @@ void loop() {
                     g_about->clearLegal();
                     g_about->hide();
                     if (g_legal) {
+                        g_previousState = AppState::ABOUT;
                         g_legal->show();
                         setAppState(AppState::LEGAL);
                     }
                 } else if (g_about->wantsBack()) {
                     g_about->clearBack();
                     g_about->hide();
-                    setAppState(AppState::RADAR);
+                    setAppState(g_previousState);
                 }
             } else {
-                setAppState(AppState::RADAR);
+                setAppState(g_previousState);
             }
             break;
 
@@ -401,8 +406,10 @@ void loop() {
                 if (g_legal->wantsBack()) {
                     g_legal->clearBack();
                     g_legal->hide();
-                    // If we came from first-boot, go to scan selector
-                    if (g_state == AppState::LEGAL) {
+                    if (g_previousState == AppState::ABOUT) {
+                        g_about->show();
+                        setAppState(AppState::ABOUT);
+                    } else {
                         g_scanSelector->show();
                         setAppState(AppState::READY_TO_SCAN);
                     }
@@ -422,10 +429,10 @@ void loop() {
             M5Cardputer.Display.setTextColor(Theme::COLOR_TEXT_SECONDARY);
             M5Cardputer.Display.drawString("Press any key to restart", Theme::SCREEN_WIDTH / 2, Theme::SCREEN_HEIGHT / 2 + 10);
 
-            // Any key press restarts scanning (use captured state)
+            // Any key press goes to scan selector (use captured state)
             if (g_kbChange && g_kbPressed) {
-                g_engine->beginScan();
-                setAppState(AppState::SCANNING);
+                g_scanSelector->show();
+                setAppState(AppState::READY_TO_SCAN);
             }
             break;
     }
@@ -536,7 +543,7 @@ void handleKeyboardInput() {
         if (M5Cardputer.Keyboard.isKeyPressed('q') || M5Cardputer.Keyboard.isKeyPressed('Q') ||
             M5Cardputer.Keyboard.isKeyPressed(KEY_BACKSPACE)) {
             g_spectrum->hide();
-            setAppState(AppState::RADAR);
+            setAppState(g_previousState);
             return;
         }
     }
@@ -663,7 +670,7 @@ void handleKeyboardInput() {
             M5Cardputer.Keyboard.isKeyPressed('q') ||
             M5Cardputer.Keyboard.isKeyPressed('`')) {
             g_settings->hide();
-            setAppState(AppState::RADAR);
+            setAppState(g_previousState);
         }
     }
 }

@@ -38,7 +38,6 @@ VanguardEngine::VanguardEngine()
     , m_onScanProgress(nullptr)
     , m_onActionProgress(nullptr)
     , m_scanStartMs(0)
-    , m_actionStartMs(0)
     , m_transitionStep(0)
     , m_transitionStartMs(0)
     , m_transitionTotalStartMs(0)
@@ -134,6 +133,26 @@ void VanguardEngine::tick() {
     if (m_scanState == ScanState::TRANSITIONING_TO_BLE) {
         tickTransition();
     }
+
+    // Interpolate BLE scan progress (50% to 99%) + safety timeout
+    if (m_scanState == ScanState::BLE_SCANNING) {
+        uint32_t elapsed = millis() - m_scanStartMs;
+        uint8_t progress = 50 + (uint8_t)((elapsed * 49) / 3000);
+        if (progress > 99) progress = 99;
+        if (progress != m_scanProgress) {
+            m_scanProgress = progress;
+            if (m_onScanProgress) m_onScanProgress(m_scanState, m_scanProgress);
+        }
+
+        // Safety timeout: if BLE_SCANNING for > 10 seconds, force complete
+        if (elapsed > 10000) {
+            if (Serial) Serial.println("[Engine] BLE scan safety timeout (10s)");
+            BruceBLE::getInstance().stopScan();
+            m_scanState = ScanState::COMPLETE;
+            m_scanProgress = 100;
+            if (m_onScanProgress) m_onScanProgress(m_scanState, m_scanProgress);
+        }
+    }
 }
 
 // =============================================================================
@@ -226,10 +245,11 @@ void VanguardEngine::handleSystemEvent(const SystemEvent& evt) {
             target.type = TargetType::BLE_DEVICE;
             memcpy(target.bssid, dev->address, 6);
             strncpy(target.ssid, dev->name, SSID_MAX_LEN);
+            target.ssid[SSID_MAX_LEN] = '\0';
             target.rssi = dev->rssi;
             target.firstSeenMs = dev->lastSeenMs;
             target.lastSeenMs = dev->lastSeenMs;
-            
+
             m_targetTable.addOrUpdate(target);
             if (evt.isPointer) delete dev;
             break;
@@ -488,6 +508,28 @@ void VanguardEngine::tickTransition() {
             // Step 5: Start BLE scan
             {
                 BruceBLE& ble = BruceBLE::getInstance();
+
+                // Register callbacks BEFORE starting scan (bypasses SystemTask IPC)
+                ble.onDeviceFound([this](const BLEDeviceInfo& dev) {
+                    Target target;
+                    memset(&target, 0, sizeof(Target));
+                    target.type = TargetType::BLE_DEVICE;
+                    memcpy(target.bssid, dev.address, 6);
+                    strncpy(target.ssid, dev.name, SSID_MAX_LEN);
+                    target.ssid[SSID_MAX_LEN] = '\0';
+                    target.rssi = dev.rssi;
+                    target.firstSeenMs = dev.lastSeenMs;
+                    target.lastSeenMs = dev.lastSeenMs;
+                    m_targetTable.addOrUpdate(target);
+                });
+
+                ble.onScanComplete([this](int count) {
+                    if (Serial) Serial.printf("[Engine] BLE scan complete: %d devices\n", count);
+                    m_scanState = ScanState::COMPLETE;
+                    m_scanProgress = 100;
+                    if (m_onScanProgress) m_onScanProgress(m_scanState, m_scanProgress);
+                });
+
                 bool scanOk = ble.beginScan(3000);
 
                 if (!scanOk) {
@@ -583,7 +625,6 @@ bool VanguardEngine::executeAction(ActionType action, const Target& target, cons
     m_actionProgress.elapsedMs = 0;
     strncpy(m_actionProgress.statusText, "Starting...", sizeof(m_actionProgress.statusText) - 1);
     m_actionProgress.statusText[sizeof(m_actionProgress.statusText) - 1] = '\0';
-    m_actionStartMs = millis();
     m_actionActive = true;
 
     // Check for 5GHz limitation
@@ -623,8 +664,8 @@ void VanguardEngine::stopAction() {
     SystemTask::getInstance().sendRequest(req);
 
     m_actionActive = false;
-    m_actionProgress.result = ActionResult::CANCELLED;
-    strncpy(m_actionProgress.statusText, "Stopping...", sizeof(m_actionProgress.statusText) - 1);
+    m_actionProgress.result = ActionResult::STOPPED;
+    strncpy(m_actionProgress.statusText, "Stopped", sizeof(m_actionProgress.statusText) - 1);
     m_actionProgress.statusText[sizeof(m_actionProgress.statusText) - 1] = '\0';
 
     if (Serial) {
@@ -641,10 +682,6 @@ ActionProgress VanguardEngine::getActionProgress() const {
 }
 
 void VanguardEngine::onActionProgress(ActionProgressCallback cb) {
-    m_onActionProgress = cb;
-}
-
-void VanguardEngine::setActionProgressCallback(ActionProgressCallback cb) {
     m_onActionProgress = cb;
 }
 

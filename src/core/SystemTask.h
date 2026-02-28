@@ -64,13 +64,16 @@ private:
     
     // Helpers
     void sendEvent(SysEventType type, void* data = nullptr, size_t len = 0, bool isPtr = false);
-    
+    uint32_t getActionTimeout(ActionType type) const;
+    const char* getCompletionMessage(ActionType type, uint32_t packets, uint32_t elapsed) const;
+
     // State
     bool m_running;
     bool m_actionActive;
     ActionType m_currentAction;
     uint32_t m_actionStartTime;
     uint32_t m_lastProgressTime;
+    Target m_currentTarget;
 };
 
 } // namespace Vanguard

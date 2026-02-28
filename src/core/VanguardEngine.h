@@ -267,7 +267,6 @@ private:
 
     // Timing
     uint32_t m_scanStartMs;
-    uint32_t m_actionStartMs;
 
     // BLE transition state machine (non-blocking)
     uint8_t  m_transitionStep;     // Current step in WiFi→BLE transition
@@ -276,8 +275,7 @@ private:
     uint8_t  m_bleInitAttempts;    // Number of BLE init retry attempts
 
     // Internal tick handlers
-    void tickTransition();  // Handle WiFi→BLE transition steps
-    void setActionProgressCallback(ActionProgressCallback cb);
+    void tickTransition();  // Handle WiFi->BLE transition steps
 
     /**
      * @brief Handle events from the System Task (Core 0)

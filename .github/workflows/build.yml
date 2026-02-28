@@ -25,7 +25,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.platformio
-          key: ${{ runner.os }}-platformio
+          key: ${{ runner.os }}-pio-${{ hashFiles('platformio.ini') }}
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -41,10 +41,12 @@ jobs:
         run: pio run -e m5stack-cardputer
 
       - name: Run Unit Tests
-        run: pio test -e native --verbose
+        run: |
+          mkdir -p .pio/build/native
+          pio test -e native --verbose 2>&1 | tee .pio/build/native/test_output.txt
 
       - name: Check Code Quality (Cppcheck)
-        run: pio check --fail-on-defect=high --skip-packages
+        run: pio check --fail-on-defect=high --skip-packages --src-filters="+<src>"
 
       - name: Test Summary
         if: always()

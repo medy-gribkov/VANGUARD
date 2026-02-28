@@ -6,7 +6,7 @@
   <p>
     <a href="https://github.com/Mahdy-gribkov/VANGUARD/actions"><img src="https://img.shields.io/github/actions/workflow/status/Mahdy-gribkov/VANGUARD/build.yml?style=for-the-badge&label=BUILD" alt="Build Status"></a>
     <img src="https://img.shields.io/badge/Platform-ESP32--S3-blue?style=for-the-badge&logo=espressif" alt="Platform ESP32">
-    <img src="https://img.shields.io/badge/Version-v2.0.0-orange?style=for-the-badge" alt="Version">
+    <img src="https://img.shields.io/badge/Version-v1.0.2-orange?style=for-the-badge" alt="Version">
     <img src="https://img.shields.io/badge/License-AGPL--3.0-green?style=for-the-badge" alt="License">
   </p>
 
@@ -150,4 +150,4 @@ test/          Native unit tests (googletest)
 
 AGPL-3.0. See [LICENSE](LICENSE).
 
-Built by [SporeSec](https://github.com/spore-sec).
+Built by [Medy Gribkov](https://github.com/medy-gribkov).

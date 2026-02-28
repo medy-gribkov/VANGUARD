@@ -129,7 +129,7 @@ void SettingsPanel::render() {
     m_canvas->setTextSize(1);
     m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED);
     m_canvas->setTextDatum(BC_DATUM);
-    m_canvas->drawString("[;,] Up  [./] Down  [<>] Adjust  [Q] Back",
+    m_canvas->drawString("[k/l] Adjust  [Enter] Toggle  [Q] Back",
                          Theme::SCREEN_WIDTH / 2, Theme::SCREEN_HEIGHT - 2);
 
     m_canvas->pushSprite(0, 0);

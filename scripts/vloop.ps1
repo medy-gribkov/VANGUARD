@@ -2,7 +2,7 @@
 # Description: Formats, Tests, Builds, Commits, and Pushes.
 
 $ErrorActionPreference = "Stop"
-$PIO = "C:\Users\User\.platformio\penv\Scripts\pio.exe"
+$PIO = "$env:USERPROFILE\.platformio\penv\Scripts\pio.exe"
 
 function Write-Step { param($msg) Write-Host "`n[VANGUARD-LOOP] $msg" -ForegroundColor Cyan }
 function Write-Success { param($msg) Write-Host "SUCCESS: $msg" -ForegroundColor Green }

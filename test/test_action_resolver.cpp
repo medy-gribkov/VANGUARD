@@ -246,3 +246,92 @@ TEST_F(ActionResolverTest, NewlyImplementedActionsReturned) {
     EXPECT_TRUE(hasAction(actions, ActionType::CAPTURE_PMKID));
     EXPECT_TRUE(hasAction(actions, ActionType::PROBE_FLOOD));
 }
+
+// =============================================================================
+// Attack Chain Tests (A16-A17)
+// =============================================================================
+
+TEST_F(ActionResolverTest, WiFiAPWithClientsGetsCaptureChain) {
+    Target ap = makeWiFiAP("SecureNet", SecurityType::WPA2_PSK, 3);
+    auto chains = resolver.getChainsFor(ap);
+
+    // Should have "Full Capture" chain (deauth + handshake)
+    bool hasCapture = false;
+    for (const auto& chain : chains) {
+        if (strcmp(chain.name, "Full Capture") == 0) {
+            hasCapture = true;
+            EXPECT_EQ(chain.stepCount, 2);
+            EXPECT_EQ(chain.steps[0], ActionType::DEAUTH_ALL);
+            EXPECT_EQ(chain.steps[1], ActionType::CAPTURE_HANDSHAKE);
+        }
+    }
+    EXPECT_TRUE(hasCapture);
+}
+
+TEST_F(ActionResolverTest, WiFiAPGetsReconChain) {
+    Target ap = makeWiFiAP("AnyNet", SecurityType::WPA2_PSK, 0);
+    auto chains = resolver.getChainsFor(ap);
+
+    // Should have "Recon" chain even without clients
+    bool hasRecon = false;
+    for (const auto& chain : chains) {
+        if (strcmp(chain.name, "Recon") == 0) {
+            hasRecon = true;
+            EXPECT_EQ(chain.stepCount, 2);
+        }
+    }
+    EXPECT_TRUE(hasRecon);
+}
+
+TEST_F(ActionResolverTest, WiFiAPWithClientsGetsDisruptionChain) {
+    Target ap = makeWiFiAP("Target", SecurityType::WPA2_PSK, 2);
+    auto chains = resolver.getChainsFor(ap);
+
+    bool hasDisrupt = false;
+    for (const auto& chain : chains) {
+        if (strcmp(chain.name, "Disruption") == 0) {
+            hasDisrupt = true;
+            EXPECT_EQ(chain.stepCount, 2);
+            EXPECT_EQ(chain.steps[0], ActionType::DEAUTH_ALL);
+            EXPECT_EQ(chain.steps[1], ActionType::BEACON_FLOOD);
+        }
+    }
+    EXPECT_TRUE(hasDisrupt);
+}
+
+TEST_F(ActionResolverTest, OpenAPNoCaptureChain) {
+    // Open networks can't have handshake capture, so no "Full Capture" chain
+    Target ap = makeWiFiAP("OpenNet", SecurityType::OPEN, 3);
+    auto chains = resolver.getChainsFor(ap);
+
+    for (const auto& chain : chains) {
+        EXPECT_STRNE(chain.name, "Full Capture");
+    }
+}
+
+TEST_F(ActionResolverTest, BLEDeviceNoChains) {
+    Target ble = makeBLEDevice("BLE-Thing");
+    auto chains = resolver.getChainsFor(ble);
+    EXPECT_EQ(chains.size(), 0u);
+}
+
+TEST_F(ActionResolverTest, FiveGHzAPNoChains) {
+    Target ap5g = makeWiFiAP("5GHz-Net", SecurityType::WPA2_PSK, 3, 36);
+    auto chains = resolver.getChainsFor(ap5g);
+    EXPECT_EQ(chains.size(), 0u);
+}
+
+TEST_F(ActionResolverTest, IRDeviceNoChains) {
+    Target ir = makeIRDevice("Remote");
+    auto chains = resolver.getChainsFor(ir);
+    EXPECT_EQ(chains.size(), 0u);
+}
+
+// =============================================================================
+// ActionResult::STOPPED Tests (A6/H6)
+// =============================================================================
+
+TEST_F(ActionResolverTest, StoppedResultIsDifferentFromCancelled) {
+    EXPECT_NE(ActionResult::STOPPED, ActionResult::CANCELLED);
+    EXPECT_NE(ActionResult::STOPPED, ActionResult::SUCCESS);
+}

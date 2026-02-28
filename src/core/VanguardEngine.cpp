@@ -307,10 +307,6 @@ void VanguardEngine::onScanProgress(ScanProgressCallback cb) {
     m_onScanProgress = cb;
 }
 
-void VanguardEngine::tickScan() {
-    // Handled in tick()
-}
-
 void VanguardEngine::processScanResults(int count) {
     for (int i = 0; i < count; i++) {
         Target target;
@@ -492,7 +488,18 @@ void VanguardEngine::tickTransition() {
             // Step 5: Start BLE scan
             {
                 BruceBLE& ble = BruceBLE::getInstance();
-                ble.beginScan(3000);
+                bool scanOk = ble.beginScan(3000);
+
+                if (!scanOk) {
+                    // BLE scan failed (radio busy or init error), complete with WiFi-only results
+                    if (Serial) Serial.println("[Trans] BLE scan start FAILED, completing WiFi-only");
+                    m_scanState = ScanState::COMPLETE;
+                    m_scanProgress = 100;
+                    if (m_onScanProgress) {
+                        m_onScanProgress(m_scanState, m_scanProgress);
+                    }
+                    break;
+                }
 
                 m_scanState = ScanState::BLE_SCANNING;
                 m_scanProgress = 50;
@@ -639,11 +646,6 @@ void VanguardEngine::onActionProgress(ActionProgressCallback cb) {
 
 void VanguardEngine::setActionProgressCallback(ActionProgressCallback cb) {
     m_onActionProgress = cb;
-}
-
-void VanguardEngine::tickAction() {
-    // Logic moved to System Task (Core 0)
-    // We update via IPC events now.
 }
 
 // =============================================================================

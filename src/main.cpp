@@ -6,7 +6,7 @@
  * Instead of "pick attack, then target", we do "see targets, pick one, see options".
  *
  * @author VANGUARD Contributors
- * @license GPL-3.0
+ * @license AGPL-3.0
  */
 
 #include <M5Cardputer.h>
@@ -22,6 +22,7 @@
 #include "ui/MainMenu.h"
 #include "ui/SettingsPanel.h"
 #include "ui/AboutPanel.h"
+#include "ui/LegalPanel.h"
 #include "ui/SpectrumView.h"
 #include "ui/Theme.h"
 #include "ui/FeedbackManager.h"
@@ -47,6 +48,7 @@ static MainMenu*       g_menu         = nullptr;
 static SettingsPanel*  g_settings     = nullptr;
 static AboutPanel*     g_about        = nullptr;
 static SpectrumView*   g_spectrum     = nullptr;
+static LegalPanel*     g_legal        = nullptr;
 
 enum class AppState {
     INITIALIZING,    // New state for lazy loading
@@ -59,6 +61,7 @@ enum class AppState {
     SPECTRUM_ANALYZER,
     SETTINGS,
     ABOUT,           // About dialog
+    LEGAL,           // Legal disclaimer
     ERROR
 };
 
@@ -128,6 +131,7 @@ void setup() {
     g_settings = new (std::nothrow) SettingsPanel();
     g_about = new (std::nothrow) AboutPanel();
     g_spectrum = new (std::nothrow) SpectrumView();
+    g_legal = new (std::nothrow) LegalPanel();
 
     if (!g_boot || !g_scanSelector || !g_radar || !g_menu) {
         if (Serial) Serial.println("[FATAL] UI allocation failed");
@@ -168,13 +172,9 @@ void loop() {
         g_consumeNextInput = true;  // Prevent key "bleed-through" to next state
         MenuAction action = g_menu->getAction();
         switch (action) {
-            case MenuAction::RESCAN:
-                g_engine->beginScan();
-                setAppState(AppState::SCANNING);
-                break;
-            case MenuAction::RESCAN_BLE:
-                g_engine->beginBLEScan();
-                setAppState(AppState::SCANNING);
+            case MenuAction::NEW_SCAN:
+                g_scanSelector->show();
+                setAppState(AppState::READY_TO_SCAN);
                 break;
             case MenuAction::SPECTRUM:
                 if (!g_spectrum) break;
@@ -234,10 +234,15 @@ void loop() {
             }
 
             if (g_boot->isComplete()) {
-                if (Serial) Serial.println(F("[VANGUARD] Boot complete. Showing Scan Selector."));
-                // Transition to scan selection screen
-                g_scanSelector->show();
-                setAppState(AppState::READY_TO_SCAN);
+                if (Serial) Serial.println(F("[VANGUARD] Boot complete."));
+                // First-boot: show legal disclaimer if not yet acknowledged
+                if (g_legal && !LegalPanel::hasAcknowledged()) {
+                    g_legal->show();
+                    setAppState(AppState::LEGAL);
+                } else {
+                    g_scanSelector->show();
+                    setAppState(AppState::READY_TO_SCAN);
+                }
             }
             break;
         }
@@ -371,14 +376,40 @@ void loop() {
                 g_about->tick();
                 g_about->render();
 
-                // Any key closes about dialog
-                if (g_about->wantsBack()) {
+                if (g_about->wantsLegal()) {
+                    g_about->clearLegal();
+                    g_about->hide();
+                    if (g_legal) {
+                        g_legal->show();
+                        setAppState(AppState::LEGAL);
+                    }
+                } else if (g_about->wantsBack()) {
                     g_about->clearBack();
                     g_about->hide();
                     setAppState(AppState::RADAR);
                 }
             } else {
                 setAppState(AppState::RADAR);
+            }
+            break;
+
+        case AppState::LEGAL:
+            if (g_legal) {
+                g_legal->tick();
+                g_legal->render();
+
+                if (g_legal->wantsBack()) {
+                    g_legal->clearBack();
+                    g_legal->hide();
+                    // If we came from first-boot, go to scan selector
+                    if (g_state == AppState::LEGAL) {
+                        g_scanSelector->show();
+                        setAppState(AppState::READY_TO_SCAN);
+                    }
+                }
+            } else {
+                g_scanSelector->show();
+                setAppState(AppState::READY_TO_SCAN);
             }
             break;
 
@@ -574,6 +605,36 @@ void handleKeyboardInput() {
             g_engine->stopAction();
             setAppState(AppState::TARGET_DETAIL);
 
+        }
+    }
+
+    // About navigation
+    if (g_state == AppState::ABOUT && g_about) {
+        if (M5Cardputer.Keyboard.isKeyPressed(KEY_ENTER) || M5Cardputer.Keyboard.isKeyPressed('e')) {
+            g_about->onKeyLegal();
+        } else if (M5Cardputer.Keyboard.isKeyPressed('q') || M5Cardputer.Keyboard.isKeyPressed('Q') ||
+                   M5Cardputer.Keyboard.isKeyPressed(KEY_BACKSPACE)) {
+            g_about->onKeyBack();
+        }
+    }
+
+    // Legal disclaimer navigation
+    if (g_state == AppState::LEGAL && g_legal) {
+        if (M5Cardputer.Keyboard.isKeyPressed(';') || M5Cardputer.Keyboard.isKeyPressed(',')) {
+            g_legal->scrollUp();
+        }
+        if (M5Cardputer.Keyboard.isKeyPressed('.') || M5Cardputer.Keyboard.isKeyPressed('/')) {
+            g_legal->scrollDown();
+        }
+        if (M5Cardputer.Keyboard.isKeyPressed(KEY_ENTER) || M5Cardputer.Keyboard.isKeyPressed('e')) {
+            g_legal->onKeyAccept();
+        }
+        if (M5Cardputer.Keyboard.isKeyPressed('q') || M5Cardputer.Keyboard.isKeyPressed('Q') ||
+            M5Cardputer.Keyboard.isKeyPressed(KEY_BACKSPACE)) {
+            if (LegalPanel::hasAcknowledged()) {
+                g_legal->onKeyBack();
+            }
+            // Can't close without acknowledging on first boot
         }
     }
 

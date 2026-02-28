@@ -276,8 +276,6 @@ private:
     uint8_t  m_bleInitAttempts;    // Number of BLE init retry attempts
 
     // Internal tick handlers
-    void tickScan();
-    void tickAction();
     void tickTransition();  // Handle WiFi→BLE transition steps
     void setActionProgressCallback(ActionProgressCallback cb);
 

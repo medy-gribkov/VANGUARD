@@ -68,7 +68,7 @@ private:
     static constexpr uint32_t RENDER_INTERVAL_MS = 100;
     static constexpr uint32_t ANIM_INTERVAL_MS = 500;
 
-    void drawOption(int16_t y, const char* key, const char* label, uint16_t keyColor);
+    void drawOption(int16_t y, const char* key, const char* label, const char* desc, uint16_t keyColor);
 };
 
 } // namespace Vanguard

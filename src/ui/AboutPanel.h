@@ -30,14 +30,23 @@ public:
     void render();
 
     /**
-     * @brief Check if user wants to close (any key pressed)
+     * @brief Check if user wants to close
      */
     bool wantsBack() const;
     void clearBack();
 
+    /** @brief User pressed Enter to view legal disclaimer */
+    bool wantsLegal() const;
+    void clearLegal();
+
+    /** @brief Input methods called from main.cpp */
+    void onKeyBack() { m_wantsBack = true; }
+    void onKeyLegal() { m_wantsLegal = true; }
+
 private:
     bool         m_visible;
     bool         m_wantsBack;
+    bool         m_wantsLegal;
     M5Canvas*    m_canvas;
     uint32_t     m_lastRenderMs;
 

@@ -138,8 +138,10 @@ BLEAdapterState BruceBLE::getState() const {
 // =============================================================================
 
 bool BruceBLE::beginScan(uint32_t durationMs) {
-    if (!m_enabled && !onEnable()) return false;
-
+    if (!m_enabled && !onEnable()) {
+        if (Serial) Serial.println("[BLE] beginScan failed: RadioWarden denied BLE access");
+        return false;
+    }
 
     // Stop any existing scan first
     if (m_scanner && m_scanner->isScanning()) {
@@ -175,8 +177,9 @@ bool BruceBLE::beginScan(uint32_t durationMs) {
 void BruceBLE::stopScan() {
     if (m_state == BLEAdapterState::SCANNING) {
         // Force stop scanner
-        if (!m_scanner) return;  // Safety check
-        m_scanner->stop();
+        if (m_scanner) {
+            m_scanner->stop();
+        }
 
         // Always transition state immediately
         m_state = BLEAdapterState::IDLE;
@@ -223,7 +226,15 @@ void BruceBLE::onScanComplete(BLEScanCompleteCallback cb) {
 }
 
 void BruceBLE::tickScan() {
-    if (!m_scanner) return;  // Safety check
+    if (!m_scanner) {
+        // Scanner is null (init failed). Don't hang, complete with 0 devices.
+        if (Serial) Serial.println("[BLE] WARN: tickScan with null scanner, completing");
+        m_state = BLEAdapterState::IDLE;
+        if (m_onScanComplete) {
+            m_onScanComplete(0);
+        }
+        return;
+    }
 
     yield();  // Feed watchdog during scan
 

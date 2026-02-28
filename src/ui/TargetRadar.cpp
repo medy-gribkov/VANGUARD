@@ -115,7 +115,7 @@ void TargetRadar::render() {
         m_canvas->drawString("No targets found", centerX, centerY - 20);
 
         m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED);
-        m_canvas->drawString("Make sure WiFi is nearby", centerX, centerY);
+        m_canvas->drawString("Start a scan to discover targets", centerX, centerY);
 
         m_canvas->setTextColor(Theme::COLOR_ACCENT);
         m_canvas->drawString("[R] Rescan", centerX, centerY + 20);
@@ -303,7 +303,7 @@ void TargetRadar::renderTargetItemToCanvas(const Target& target, int y, bool hig
 
     // RSSI value (top right)
     char rssiStr[16];
-    snprintf(rssiStr, sizeof(rssiStr), "%ddB", target.rssi);
+    snprintf(rssiStr, sizeof(rssiStr), "%d dBm", target.rssi);
     uint16_t signalColor = Theme::getSignalColor(target.rssi);
     m_canvas->setTextColor(signalColor, bgColor);
     m_canvas->setTextDatum(TR_DATUM);

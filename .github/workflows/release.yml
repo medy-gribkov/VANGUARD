@@ -27,7 +27,6 @@ jobs:
 
       - name: Run Unit Tests
         run: pio test -e native --verbose
-        continue-on-error: true
 
       - name: Create Release
         uses: softprops/action-gh-release@v2

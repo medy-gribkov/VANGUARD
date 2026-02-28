@@ -19,12 +19,11 @@ MainMenu::MainMenu()
     , m_lastRenderMs(0)
 {
     // Setup menu items
-    m_items.push_back({"Rescan WiFi", MenuAction::RESCAN});
-    m_items.push_back({"Scan BLE", MenuAction::RESCAN_BLE});
-    m_items.push_back({"Spectrum Viewer", MenuAction::SPECTRUM});
+    m_items.push_back({"New Scan", MenuAction::NEW_SCAN});
+    m_items.push_back({"Spectrum Analyzer", MenuAction::SPECTRUM});
     m_items.push_back({"Settings", MenuAction::SETTINGS});
-    m_items.push_back({"About", MenuAction::ABOUT});
-    m_items.push_back({"Close Menu", MenuAction::BACK});
+    m_items.push_back({"About & Legal", MenuAction::ABOUT});
+    m_items.push_back({"Close", MenuAction::BACK});
 }
 
 MainMenu::~MainMenu() {
@@ -62,56 +61,35 @@ void MainMenu::render() {
     m_lastRenderMs = now;
     m_needsRedraw = false;
 
-    // Draw menu background with border
-    // Centered box: 160x100 on 240x135 screen
-    int16_t boxW = 160;
-    int16_t boxH = 100;
-    int16_t boxX = (Theme::SCREEN_WIDTH - boxW) / 2;
-    int16_t boxY = (Theme::SCREEN_HEIGHT - boxH) / 2;
+    // Near-fullscreen menu
+    m_canvas->fillScreen(Theme::COLOR_BACKGROUND);
 
-    // We don't fillScreen since this is an overlay, but in shared model we must 
-    // be careful. However, since we push the WHOLE sprite to the display, 
-    // we should probably capture the background first? 
-    // NO: The current architecture seems to assume each screen renders FULLY.
-    // If MainMenu is an overlay, it needs to know what's underneath.
-    // BUT! Looking at the original code, it pushed a 160x100 sprite to a specific (x,y).
-    // In our shared model, we MUST fill the background if we push 0,0.
-    
-    // For now, let's keep it as an overlay by only pushing the changed area if possible,
-    // OR we fillScreen with a darkened version of "nothing" for now.
-    // Actually, the best way for an overlay is to NOT use the shared canvas if it needs to preserve background.
-    // BUT the goal is saving RAM. 
-    
-    // DECISION: MainMenu will fillScreen with a translucent-looking dark color or just black for now.
-    m_canvas->fillScreen(Theme::COLOR_BACKGROUND); 
-    
-    m_canvas->drawRect(boxX, boxY, boxW, boxH, Theme::COLOR_ACCENT);
+    // Accent bar at top
+    m_canvas->fillRect(0, 0, Theme::SCREEN_WIDTH, 4, Theme::COLOR_ACCENT);
 
-    // Header with Vanguard branding
-    m_canvas->fillRect(boxX + 1, boxY + 1, boxW - 2, 16, Theme::COLOR_SURFACE);
+    // Header
+    m_canvas->fillRect(0, 4, Theme::SCREEN_WIDTH, 16, Theme::COLOR_SURFACE);
     m_canvas->setTextSize(1);
-    m_canvas->setTextColor(Theme::COLOR_TEXT_PRIMARY);
-    m_canvas->setTextDatum(TC_DATUM);
-    m_canvas->drawString("VANGUARD", Theme::SCREEN_WIDTH / 2, boxY + 6);
+    m_canvas->setTextColor(Theme::COLOR_ACCENT);
+    m_canvas->setTextDatum(TL_DATUM);
+    m_canvas->drawString("VANGUARD MENU", 8, 8);
 
     // Menu items
-    int16_t itemY = boxY + 20;
+    int16_t itemY = 24;
+    int16_t itemH = 20;
     for (size_t i = 0; i < m_items.size(); i++) {
-        bool highlighted = ((int)i == m_highlightIndex);
-
-        if (highlighted) {
-            m_canvas->fillRect(boxX + 2, itemY, boxW - 4, 18, Theme::COLOR_SURFACE_RAISED);
-            m_canvas->fillRect(boxX + 2, itemY, 3, 18, Theme::COLOR_ACCENT);
-        }
-
-        m_canvas->setTextColor(highlighted ? Theme::COLOR_TEXT_PRIMARY : Theme::COLOR_TEXT_SECONDARY);
-        m_canvas->setTextDatum(TL_DATUM);
-        m_canvas->drawString(m_items[i].label, boxX + 10, itemY + 4);
-
-        itemY += 19;
+        renderMenuItem((int)i, itemY);
+        itemY += itemH;
     }
 
-    // Push full sprite
+    // Footer
+    m_canvas->fillRect(0, Theme::SCREEN_HEIGHT - 14, Theme::SCREEN_WIDTH, 14, Theme::COLOR_SURFACE);
+    m_canvas->drawFastHLine(0, Theme::SCREEN_HEIGHT - 14, Theme::SCREEN_WIDTH, Theme::COLOR_ACCENT_DIM);
+    m_canvas->setTextSize(1);
+    m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED);
+    m_canvas->setTextDatum(MC_DATUM);
+    m_canvas->drawString("[;,.] Nav  [ENTER] Select  [M] Close", Theme::SCREEN_WIDTH / 2, Theme::SCREEN_HEIGHT - 7);
+
     m_canvas->pushSprite(0, 0);
 }
 
@@ -146,6 +124,24 @@ MenuAction MainMenu::getAction() {
     m_hasAction = false;
     m_selectedAction = MenuAction::NONE;
     return action;
+}
+
+void MainMenu::renderMenuItem(int index, int y) {
+    bool highlighted = (index == m_highlightIndex);
+    int16_t w = Theme::SCREEN_WIDTH;
+    int16_t h = 20;
+
+    uint16_t bgColor = highlighted ? Theme::COLOR_SURFACE_RAISED : Theme::COLOR_BACKGROUND;
+    m_canvas->fillRect(0, y, w, h, bgColor);
+
+    if (highlighted) {
+        m_canvas->fillRect(0, y, 3, h, Theme::COLOR_ACCENT);
+    }
+
+    m_canvas->setTextSize(1);
+    m_canvas->setTextColor(highlighted ? Theme::COLOR_TEXT_PRIMARY : Theme::COLOR_TEXT_SECONDARY);
+    m_canvas->setTextDatum(ML_DATUM);
+    m_canvas->drawString(m_items[index].label, 12, y + h / 2);
 }
 
 } // namespace Vanguard

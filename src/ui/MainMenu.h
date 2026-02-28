@@ -7,10 +7,11 @@
  *
  * Press 'M' from anywhere to bring up the menu.
  * Menu options:
- * - Rescan WiFi
+ * - New Scan
+ * - Spectrum Analyzer
  * - Settings
- * - About
- * - Back to Radar
+ * - About & Legal
+ * - Close
  */
 
 #include <M5Cardputer.h>
@@ -21,8 +22,7 @@ namespace Vanguard {
 
 enum class MenuAction {
     NONE,
-    RESCAN,
-    RESCAN_BLE,
+    NEW_SCAN,
     SPECTRUM,
     SETTINGS,
     ABOUT,

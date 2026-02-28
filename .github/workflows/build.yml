@@ -46,13 +46,32 @@ jobs:
       - name: Check Code Quality (Cppcheck)
         run: pio check --fail-on-defect=high --skip-packages
 
+      - name: Test Summary
+        if: always()
+        run: |
+          echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+          if [ -f .pio/build/native/test_output.txt ]; then
+            PASSED=$(grep -c '\[  PASSED  \]' .pio/build/native/test_output.txt 2>/dev/null || echo "0")
+            FAILED=$(grep -c '\[  FAILED  \]' .pio/build/native/test_output.txt 2>/dev/null || echo "0")
+            echo "| Result | Count |" >> $GITHUB_STEP_SUMMARY
+            echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
+            echo "| Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Native test output not found. Check test step logs." >> $GITHUB_STEP_SUMMARY
+          fi
+
       - name: Binary Analysis
         run: |
           echo "### Binary Analysis" >> $GITHUB_STEP_SUMMARY
           echo "| Artifact | Size (Bytes) |" >> $GITHUB_STEP_SUMMARY
           echo "|----------|--------------|" >> $GITHUB_STEP_SUMMARY
           echo "| Firmware | $(stat -c%s .pio/build/m5stack-cardputer/firmware.bin) |" >> $GITHUB_STEP_SUMMARY
-          echo "| Flash Map | $(stat -c%s partitions_vanguard.csv) |" >> $GITHUB_STEP_SUMMARY
+          if [ -f partitions_vanguard.csv ]; then
+            echo "| Flash Map | $(stat -c%s partitions_vanguard.csv) |" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "| Flash Map | (not found) |" >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4

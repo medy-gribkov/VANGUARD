@@ -29,7 +29,7 @@ SettingsPanel::~SettingsPanel() {
 void SettingsPanel::initSettings() {
     // Discovery scan duration (seconds)
     m_settings.push_back({
-        "Discovery Time",
+        "WiFi Scan Duration",
         "Scan duration in seconds",
         SettingType::NUMBER,
         5,      // default 5 sec
@@ -40,7 +40,7 @@ void SettingsPanel::initSettings() {
 
     // Targeting scan duration (seconds)
     m_settings.push_back({
-        "Targeting Time",
+        "BLE Scan Duration",
         "Scan duration in seconds",
         SettingType::NUMBER,
         3,      // default 3 sec

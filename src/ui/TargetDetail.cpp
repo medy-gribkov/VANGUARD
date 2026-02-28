@@ -22,6 +22,7 @@ TargetDetail::TargetDetail(VanguardEngine& engine, const Target& target)
     , m_actionConfirmed(false)
     , m_confirmedAction(ActionType::NONE)
     , m_resultMessage(nullptr)
+    , m_confirmingStop(false)
     , m_canvas(&CanvasManager::getInstance().getCanvas())
     , m_lastRenderMs(0)
 {
@@ -30,11 +31,19 @@ TargetDetail::TargetDetail(VanguardEngine& engine, const Target& target)
     // Get available actions for this target
     m_actions = m_engine.getActionsFor(target);
 
+    // Get available chains for this target
+    ActionResolver resolver;
+    m_chains = resolver.getChainsFor(target);
+    m_chainIndex = 0;
+    m_chainActive = false;
+    m_chainStep = 0;
+    m_chainTotalSteps = 0;
+
     yield();  // Feed watchdog
 
     if (Serial) {
-        Serial.printf("[Detail] Created for target '%s' with %d actions\n",
-                      target.ssid, (int)m_actions.size());
+        Serial.printf("[Detail] Created for target '%s' with %d actions, %d chains\n",
+                      target.ssid, (int)m_actions.size(), (int)m_chains.size());
     }
 }
 
@@ -52,6 +61,18 @@ void TargetDetail::tick() {
         m_progress = m_engine.getActionProgress();
 
         if (m_progress.result != ActionResult::IN_PROGRESS) {
+            // Chain: advance to next step if current succeeded
+            if (m_chainActive && m_chainStep + 1 < m_chainTotalSteps &&
+                m_progress.result == ActionResult::SUCCESS) {
+                m_chainStep++;
+                m_confirmedAction = m_chains[m_chainIndex].steps[m_chainStep];
+                m_actionConfirmed = true;
+                // Stay in EXECUTING state, main.cpp will pick up actionConfirmed
+                return;
+            }
+            // Chain complete or single action complete
+            m_chainActive = false;
+
             m_result = m_progress.result;
             if (m_result == ActionResult::SUCCESS) {
                 // Build a contextual success message with the action name
@@ -139,7 +160,8 @@ void TargetDetail::navigateUp() {
 
 void TargetDetail::navigateDown() {
     if (m_state == DetailViewState::ACTIONS) {
-        if (m_actionIndex < (int)m_actions.size() - 1) m_actionIndex++;
+        int totalItems = (int)m_actions.size() + (int)m_chains.size();
+        if (m_actionIndex < totalItems - 1) m_actionIndex++;
     } else if (m_state == DetailViewState::INFO) {
         if (m_target.clientCount > 0) {
             m_selectedClientIndex = 0;
@@ -162,10 +184,22 @@ void TargetDetail::select() {
 
         case DetailViewState::ACTIONS:
             if (m_actionIndex >= 0 && m_actionIndex < (int)m_actions.size()) {
+                // Regular action
                 if (m_actions[m_actionIndex].isDestructive) {
                     transitionTo(DetailViewState::CONFIRM);
                 } else {
                     m_confirmedAction = m_actions[m_actionIndex].type;
+                    m_actionConfirmed = true;
+                }
+            } else if (m_actionIndex >= (int)m_actions.size()) {
+                // Chain selected
+                int chainIdx = m_actionIndex - (int)m_actions.size();
+                if (chainIdx < (int)m_chains.size()) {
+                    m_chainActive = true;
+                    m_chainIndex = chainIdx;
+                    m_chainStep = 0;
+                    m_chainTotalSteps = m_chains[chainIdx].stepCount;
+                    m_confirmedAction = m_chains[chainIdx].steps[0];
                     m_actionConfirmed = true;
                 }
             }
@@ -177,8 +211,13 @@ void TargetDetail::select() {
             break;
 
         case DetailViewState::CONFIRM:
-            m_confirmedAction = m_actions[m_actionIndex].type;
-            m_actionConfirmed = true;
+            if (m_confirmingStop) {
+                m_confirmingStop = false;
+                m_wantsBack = true;  // Signal to main.cpp to stop attack
+            } else {
+                m_confirmedAction = m_actions[m_actionIndex].type;
+                m_actionConfirmed = true;
+            }
             break;
 
         case DetailViewState::RESULT:
@@ -205,11 +244,17 @@ void TargetDetail::back() {
             break;
 
         case DetailViewState::CONFIRM:
-            transitionTo(DetailViewState::ACTIONS);
+            if (m_confirmingStop) {
+                m_confirmingStop = false;
+                transitionTo(DetailViewState::EXECUTING);  // Go back to executing
+            } else {
+                transitionTo(DetailViewState::ACTIONS);
+            }
             break;
 
         case DetailViewState::EXECUTING:
-            m_wantsBack = true;
+            m_confirmingStop = true;
+            transitionTo(DetailViewState::CONFIRM);
             break;
 
         case DetailViewState::RESULT:
@@ -356,7 +401,8 @@ void TargetDetail::renderInfo() {
             // Show up to 3 client MACs
             for (int i = 0; i < m_target.clientCount && i < 3; i++) {
                 char macStr[20];
-                snprintf(macStr, sizeof(macStr), " %02X:%02X:%02X:%02X:%02X:%02X",
+                snprintf(macStr, sizeof(macStr), "#%d %02X:%02X:%02X:%02X:%02X:%02X",
+                         i + 1,
                          m_target.clientMacs[i][0], m_target.clientMacs[i][1], m_target.clientMacs[i][2],
                          m_target.clientMacs[i][3], m_target.clientMacs[i][4], m_target.clientMacs[i][5]);
                 
@@ -431,11 +477,19 @@ void TargetDetail::renderActions() {
     m_canvas->drawString("AVAILABLE ACTIONS:", 8, y);
     y += 12;
 
+    // Legend for destructive indicator
+    m_canvas->fillCircle(12, y + 3, 2, Theme::COLOR_DANGER);
+    m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED);
+    m_canvas->drawString("= destructive", 18, y);
+    y += 10;
+
     // Show up to 4 actions
     int startIdx = 0;
     if (m_actionIndex >= 4) {
         startIdx = m_actionIndex - 3;
     }
+
+    int totalItems = (int)m_actions.size() + (int)m_chains.size();
 
     for (int i = startIdx; i < (int)m_actions.size() && (i - startIdx) < 4; i++) {
         bool selected = (i == m_actionIndex);
@@ -443,12 +497,52 @@ void TargetDetail::renderActions() {
         y += 22;
     }
 
+    // Chain section (if chains available and visible in scroll window)
+    if (!m_chains.empty()) {
+        int actionsDrawn = min((int)m_actions.size() - startIdx, 4);
+        int slotsLeft = 4 - actionsDrawn;
+
+        // Show separator if we have room and chains are in view
+        int chainStartInList = (int)m_actions.size();
+        if (startIdx + actionsDrawn >= chainStartInList && slotsLeft > 0) {
+            m_canvas->drawLine(8, y + 2, Theme::SCREEN_WIDTH - 8, y + 2, Theme::COLOR_SURFACE_RAISED);
+            y += 6;
+            m_canvas->setTextColor(Theme::COLOR_TEXT_SECONDARY);
+            m_canvas->setTextDatum(TL_DATUM);
+            m_canvas->drawString("ATTACK CHAINS:", 8, y);
+            y += 12;
+        }
+
+        // Draw chain items that fall within scroll window
+        for (int i = 0; i < (int)m_chains.size() && y < Theme::SCREEN_HEIGHT - 14; i++) {
+            int totalIdx = (int)m_actions.size() + i;
+            if (totalIdx < startIdx) continue;
+            bool selected = (totalIdx == m_actionIndex);
+
+            int16_t x = 8;
+            int16_t w = Theme::SCREEN_WIDTH - 16;
+            int16_t h = 20;
+            uint16_t bgColor = selected ? Theme::COLOR_SURFACE_RAISED : Theme::COLOR_SURFACE;
+            m_canvas->fillRoundRect(x, y, w, h, 3, bgColor);
+            if (selected) {
+                m_canvas->fillRect(x, y, 3, h, Theme::COLOR_WARNING);
+            }
+            m_canvas->setTextSize(1);
+            m_canvas->setTextColor(Theme::COLOR_TEXT_PRIMARY);
+            m_canvas->setTextDatum(TL_DATUM);
+            m_canvas->drawString(m_chains[i].name, x + 18, y + 2);
+            m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED);
+            m_canvas->drawString(m_chains[i].description, x + 18, y + 11);
+            y += 22;
+        }
+    }
+
     // Scroll indicator if needed
-    if (m_actions.size() > 4) {
+    if (totalItems > 4) {
         m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED);
         m_canvas->setTextDatum(BR_DATUM);
         char scrollStr[32];
-        snprintf(scrollStr, sizeof(scrollStr), "%d/%d", m_actionIndex + 1, (int)m_actions.size());
+        snprintf(scrollStr, sizeof(scrollStr), "%d/%d", m_actionIndex + 1, totalItems);
         m_canvas->drawString(scrollStr, Theme::SCREEN_WIDTH - 8, Theme::SCREEN_HEIGHT - 12);
     }
 
@@ -494,26 +588,31 @@ void TargetDetail::renderConfirmation() {
     int16_t centerX = Theme::SCREEN_WIDTH / 2;
     int16_t centerY = Theme::SCREEN_HEIGHT / 2;
 
-    // Warning box
     int16_t boxW = 200;
     int16_t boxH = 70;
     int16_t boxX = (Theme::SCREEN_WIDTH - boxW) / 2;
     int16_t boxY = (Theme::SCREEN_HEIGHT - boxH) / 2;
 
     m_canvas->fillRoundRect(boxX, boxY, boxW, boxH, 4, Theme::COLOR_SURFACE);
-    m_canvas->drawRoundRect(boxX, boxY, boxW, boxH, 4, Theme::COLOR_DANGER);
+    m_canvas->drawRoundRect(boxX, boxY, boxW, boxH, 4, m_confirmingStop ? Theme::COLOR_WARNING : Theme::COLOR_DANGER);
 
     m_canvas->setTextSize(1);
     m_canvas->setTextDatum(MC_DATUM);
 
-    m_canvas->setTextColor(Theme::COLOR_DANGER);
-    m_canvas->drawString("CONFIRM ATTACK?", centerX, centerY - 20);
-
-    m_canvas->setTextColor(Theme::COLOR_TEXT_PRIMARY);
-    m_canvas->drawString(m_actions[m_actionIndex].label, centerX, centerY - 5);
+    if (m_confirmingStop) {
+        m_canvas->setTextColor(Theme::COLOR_WARNING);
+        m_canvas->drawString("STOP ATTACK?", centerX, centerY - 20);
+        m_canvas->setTextColor(Theme::COLOR_TEXT_PRIMARY);
+        m_canvas->drawString("Attack is still running", centerX, centerY - 5);
+    } else {
+        m_canvas->setTextColor(Theme::COLOR_DANGER);
+        m_canvas->drawString("CONFIRM ATTACK?", centerX, centerY - 20);
+        m_canvas->setTextColor(Theme::COLOR_TEXT_PRIMARY);
+        m_canvas->drawString(m_actions[m_actionIndex].label, centerX, centerY - 5);
+    }
 
     m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED);
-    m_canvas->drawString("This may disrupt network traffic", centerX, centerY + 10);
+    m_canvas->drawString(m_confirmingStop ? "Press Enter to stop" : "This may disrupt network traffic", centerX, centerY + 10);
 
     m_canvas->setTextColor(Theme::COLOR_ACCENT);
     m_canvas->drawString("[ENTER] Yes  [Q] No", centerX, centerY + 25);
@@ -525,6 +624,15 @@ void TargetDetail::renderExecuting() {
 
     m_canvas->setTextSize(1);
     m_canvas->setTextDatum(MC_DATUM);
+
+    // Chain progress (if active)
+    if (m_chainActive) {
+        char chainStr[48];
+        snprintf(chainStr, sizeof(chainStr), "Step %d/%d: %s",
+                 m_chainStep + 1, m_chainTotalSteps, m_chains[m_chainIndex].name);
+        m_canvas->setTextColor(Theme::COLOR_WARNING);
+        m_canvas->drawString(chainStr, centerX, centerY - 42);
+    }
 
     // Status text
     m_canvas->setTextColor(Theme::COLOR_ACCENT);

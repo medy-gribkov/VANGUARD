@@ -300,4 +300,35 @@ bool ActionResolver::isImplemented(ActionType action) const {
     }
 }
 
+// =============================================================================
+// ATTACK CHAINS
+// =============================================================================
+
+std::vector<ActionChain> ActionResolver::getChainsFor(const Target& target) const {
+    std::vector<ActionChain> chains;
+
+    if (target.type == TargetType::ACCESS_POINT && target.channel <= 14) {
+        // Full Capture: deauth to force reconnect, then capture handshake
+        if (target.hasClients() && target.security != SecurityType::OPEN) {
+            ActionChain capture = {"Full Capture", "Deauth + Handshake",
+                {ActionType::DEAUTH_ALL, ActionType::CAPTURE_HANDSHAKE}, 2};
+            chains.push_back(capture);
+        }
+
+        // Recon: passive monitoring
+        ActionChain recon = {"Recon", "Monitor + Probe scan",
+            {ActionType::MONITOR, ActionType::PROBE_FLOOD}, 2};
+        chains.push_back(recon);
+
+        // Disruption: knock off + confuse
+        if (target.hasClients()) {
+            ActionChain disrupt = {"Disruption", "Deauth + Beacon flood",
+                {ActionType::DEAUTH_ALL, ActionType::BEACON_FLOOD}, 2};
+            chains.push_back(disrupt);
+        }
+    }
+
+    return chains;
+}
+
 } // namespace Vanguard

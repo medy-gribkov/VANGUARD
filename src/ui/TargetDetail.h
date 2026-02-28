@@ -25,6 +25,7 @@
 #include <M5Cardputer.h>
 #include "../core/VanguardTypes.h"
 #include "../core/VanguardEngine.h"
+#include "../core/ActionResolver.h"
 #include "Theme.h"
 #include <vector>
 
@@ -155,6 +156,14 @@ private:
     ActionResult                m_result;
     const char*                 m_resultMessage;
     char                        m_resultBuf[48];
+    bool                        m_confirmingStop;
+
+    // Chain state
+    std::vector<ActionChain>    m_chains;
+    int                         m_chainIndex;
+    bool                        m_chainActive;
+    uint8_t                     m_chainStep;
+    uint8_t                     m_chainTotalSteps;
 
     // Double buffer sprite
     M5Canvas*                   m_canvas;
@@ -167,6 +176,8 @@ private:
     void renderConfirmation();
     void renderExecuting();
     void renderResult();
+    void renderChainSelect();
+    void renderChainProgress();
 
     void renderHeader();
     void renderInfoField(int y, const char* label, const char* value);

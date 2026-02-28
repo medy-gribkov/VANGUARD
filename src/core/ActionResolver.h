@@ -26,6 +26,14 @@
 
 namespace Vanguard {
 
+// Attack chain: ordered sequence of actions on a target
+struct ActionChain {
+    const char* name;
+    const char* description;
+    ActionType steps[4];  // Max 4 steps per chain
+    uint8_t stepCount;
+};
+
 class ActionResolver {
 public:
     ActionResolver();
@@ -53,6 +61,13 @@ public:
      * @return Explanation string (e.g., "No clients connected")
      */
     const char* getInvalidReason(const Target& target, ActionType action) const;
+
+    /**
+     * @brief Get available attack chains for a target
+     * @param target The target to evaluate
+     * @return List of available chains (empty if none apply)
+     */
+    std::vector<ActionChain> getChainsFor(const Target& target) const;
 
 private:
     // -------------------------------------------------------------------------

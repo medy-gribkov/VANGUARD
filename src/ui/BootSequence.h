@@ -7,7 +7,7 @@
  *
  * The BootSequence runs once at startup. It shows:
  * 1. Logo fade-in with tagline
- * 2. Brief "What is The Assessor?" explainer (first run only)
+ * 2. Brief "What is VANGUARD?" explainer (first run only)
  * 3. Transition to scanning state
  *
  * @example
@@ -92,15 +92,8 @@ private:
     static constexpr uint32_t FADE_OUT_DURATION     = 200;
 
     // Rendering helpers
-    void renderLogoFadeIn();
-    void renderTaglineFadeIn();
-    void renderHold();
-    void renderOnboarding();
-    void renderFadeOut();
-
     void drawLogo(uint8_t alpha);
     void drawTagline(uint8_t alpha);
-    void drawOnboardingCard();
 
     void advancePhase();
     bool checkSkipInput();
@@ -108,4 +101,4 @@ private:
 
 } // namespace Vanguard
 
-#endif // ASSESSOR_BOOT_SEQUENCE_H
+#endif // VANGUARD_BOOT_SEQUENCE_H

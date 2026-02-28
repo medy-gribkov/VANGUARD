@@ -41,13 +41,16 @@ VanguardEngine::VanguardEngine()
     , m_actionStartMs(0)
     , m_transitionStep(0)
     , m_transitionStartMs(0)
+    , m_transitionTotalStartMs(0)
     , m_bleInitAttempts(0)
 {
     m_actionProgress.type = ActionType::NONE;
     m_actionProgress.result = ActionResult::SUCCESS;
     m_actionProgress.packetsSent = 0;
+    m_widsAlert.type = WidsEventType::NONE;
     m_widsAlert.active = false;
     m_widsAlert.count = 0;
+    m_widsAlert.timestamp = 0;
 }
 
 VanguardEngine::~VanguardEngine() {
@@ -65,13 +68,8 @@ bool VanguardEngine::init() {
         Serial.println("[Engine] Initializing...");
     }
 
-    // Initialize Init-Once hardware
-    // BruceBLE::getInstance().init(); // REMOVED: Truly Lazy now (see BruceBLE::onEnable)
-    BruceIR::getInstance().init();
-
-    // REVERT: WiFi Init causes boot loop. Disabling for lazy init.
-    // M5Cardputer.Display.println("Engine: Warden [LAZY]");
-    // RadioWarden::getInstance().requestRadio(RadioOwner::OWNER_WIFI_STA); 
+    // IR is lazy-initialized on first use (RMT conflicts at boot)
+    // BLE and WiFi are also lazy-initialized
     
     m_initialized = true;
 
@@ -124,17 +122,17 @@ void VanguardEngine::shutdown() {
 
 void VanguardEngine::tick() {
     // Poll for events from System Task (Core 0)
+    // Cap at 10 events per tick to prevent Core 1 stall
     SystemEvent evt;
-    while (SystemTask::getInstance().receiveEvent(evt)) {
+    int eventsProcessed = 0;
+    while (SystemTask::getInstance().receiveEvent(evt) && eventsProcessed < 10) {
         handleSystemEvent(evt);
-        
-        // Free pointer data if owned
-        if (evt.isPointer && evt.data) {
-            if (evt.type == SysEventType::BLE_DEVICE_FOUND) {
-                delete (BLEDeviceInfo*)evt.data;
-            }
-            // Add other types as needed
-        }
+        eventsProcessed++;
+    }
+
+    // Handle WiFi->BLE transition state machine
+    if (m_scanState == ScanState::TRANSITIONING_TO_BLE) {
+        tickTransition();
     }
 }
 
@@ -211,27 +209,15 @@ void VanguardEngine::handleSystemEvent(const SystemEvent& evt) {
         {
             int count = (int)(intptr_t)evt.data;
             if (Serial) Serial.printf("[Engine] WiFi Scan Complete: %d\n", count);
-            
-            // Process results (using Core 1 WiFi API access - safe here?)
-            // We assume SystemTask is NOT calling scanDelete yet.
+
+            // Process results and handle BLE transition if combined scan
             processScanResults(count);
-            
-            // If combined, start BLE scan
-            if (m_combinedScan) {
-                m_scanState = ScanState::BLE_SCANNING;
-                SystemRequest req;
-                req.cmd = SysCommand::BLE_SCAN_START;
-                req.payload = (void*)(uintptr_t)10000; // 10s
-                SystemTask::getInstance().sendRequest(req);
-            } else {
-                m_scanState = ScanState::COMPLETE;
-                m_scanProgress = 100;
-            }
             break;
         }
         
         case SysEventType::BLE_DEVICE_FOUND:
         {
+            if (!evt.data) break;
             BLEDeviceInfo* dev = (BLEDeviceInfo*)evt.data;
             // Add to table
             // We need to map BLEDeviceInfo to Target
@@ -259,6 +245,7 @@ void VanguardEngine::handleSystemEvent(const SystemEvent& evt) {
 
         case SysEventType::ASSOCIATION_FOUND:
         {
+            if (!evt.data) break;
             AssociationEvent* assoc = (AssociationEvent*)evt.data;
             if (m_targetTable.addAssociation(assoc->station, assoc->bssid)) {
                 FeedbackManager::getInstance().pulse(50);
@@ -269,6 +256,7 @@ void VanguardEngine::handleSystemEvent(const SystemEvent& evt) {
 
         case SysEventType::ACTION_PROGRESS:
         {
+            if (!evt.data) break;
             ActionProgress* prog = (ActionProgress*)evt.data;
             m_actionProgress = *prog; // Copy progress
             if (m_onActionProgress) m_onActionProgress(m_actionProgress);
@@ -287,10 +275,11 @@ void VanguardEngine::handleSystemEvent(const SystemEvent& evt) {
         case SysEventType::ERROR_OCCURRED:
         {
             const char* msg = (const char*)evt.data;
-            if (Serial) Serial.printf("[Engine] ERROR: %s\n", msg);
+            if (Serial) Serial.printf("[Engine] ERROR: %s\n", msg ? msg : "unknown");
             m_actionActive = false;
             m_actionProgress.result = ActionResult::FAILED_HARDWARE;
-            m_actionProgress.statusText = msg;
+            strncpy(m_actionProgress.statusText, msg ? msg : "Error", sizeof(m_actionProgress.statusText) - 1);
+            m_actionProgress.statusText[sizeof(m_actionProgress.statusText) - 1] = '\0';
             if (m_onActionProgress) m_onActionProgress(m_actionProgress);
             break;
         }
@@ -370,7 +359,8 @@ void VanguardEngine::processScanResults(int count) {
 
         target.isHidden = (strlen(target.ssid) == 0);
         if (target.isHidden) {
-            strcpy(target.ssid, "[Hidden]");
+            strncpy(target.ssid, "[Hidden]", sizeof(target.ssid) - 1);
+            target.ssid[sizeof(target.ssid) - 1] = '\0';
         }
 
         target.firstSeenMs = millis();
@@ -393,6 +383,7 @@ void VanguardEngine::processScanResults(int count) {
         m_scanState = ScanState::TRANSITIONING_TO_BLE;
         m_transitionStep = 0;
         m_transitionStartMs = millis();
+        m_transitionTotalStartMs = millis();
         m_bleInitAttempts = 0;
         m_scanProgress = 46;  // Just past WiFi
 
@@ -518,66 +509,17 @@ void VanguardEngine::tickTransition() {
             break;
     }
 
-    // Safety timeout for entire transition: 5 seconds
+    // Safety timeout for entire transition: 5 seconds total
     if (m_scanState == ScanState::TRANSITIONING_TO_BLE) {
-        // Check total transition time (from first step)
-        // We can't easily track this without another var, so use a generous per-step timeout
-        if (elapsed > 2000) {
-            if (Serial) Serial.println("[Trans] Step timeout, completing without BLE");
+        uint32_t totalElapsed = millis() - m_transitionTotalStartMs;
+        if (totalElapsed > 5000) {
+            if (Serial) Serial.println("[Trans] Total timeout (5s), completing without BLE");
             m_scanState = ScanState::COMPLETE;
             m_scanProgress = 100;
             if (m_onScanProgress) {
                 m_onScanProgress(m_scanState, m_scanProgress);
             }
         }
-    }
-}
-
-void VanguardEngine::processBLEScanResults() {
-    BruceBLE& ble = BruceBLE::getInstance();
-    const std::vector<BLEDeviceInfo>& devices = ble.getDevices();
-
-    if (Serial) {
-        Serial.printf("[BLE] Scan complete: %d devices found\n", devices.size());
-    }
-
-    for (const auto& device : devices) {
-        Target target;
-        memset(&target, 0, sizeof(Target));
-
-        // Copy BLE address as BSSID
-        memcpy(target.bssid, device.address, 6);
-
-        // Copy device name as SSID
-        strncpy(target.ssid, device.name, SSID_MAX_LEN);
-        target.ssid[SSID_MAX_LEN] = '\0';
-
-        target.type = device.isSuspicious ? TargetType::BLE_SKIMMER : TargetType::BLE_DEVICE;
-        target.channel = 0;  // BLE doesn't use WiFi channels
-        target.rssi = device.rssi;
-        target.security = SecurityType::UNKNOWN;  // BLE security is different
-
-        target.isHidden = (strlen(target.ssid) == 0);
-        if (target.isHidden) {
-            // Format address as name
-            snprintf(target.ssid, SSID_MAX_LEN, "BLE %02X:%02X:%02X:%02X:%02X:%02X",
-                     device.address[0], device.address[1], device.address[2],
-                     device.address[3], device.address[4], device.address[5]);
-        }
-
-        target.firstSeenMs = device.lastSeenMs;
-        target.lastSeenMs = device.lastSeenMs;
-        target.beaconCount = 1;
-        target.clientCount = 0;
-
-        m_targetTable.addOrUpdate(target);
-    }
-
-    m_scanState = ScanState::COMPLETE;
-    m_scanProgress = 100;
-
-    if (m_onScanProgress) {
-        m_onScanProgress(m_scanState, m_scanProgress);
     }
 }
 
@@ -620,14 +562,16 @@ bool VanguardEngine::executeAction(ActionType action, const Target& target, cons
     m_actionProgress.result = ActionResult::IN_PROGRESS;
     m_actionProgress.packetsSent = 0;
     m_actionProgress.elapsedMs = 0;
-    m_actionProgress.statusText = "Starting...";
+    strncpy(m_actionProgress.statusText, "Starting...", sizeof(m_actionProgress.statusText) - 1);
+    m_actionProgress.statusText[sizeof(m_actionProgress.statusText) - 1] = '\0';
     m_actionStartMs = millis();
     m_actionActive = true;
 
     // Check for 5GHz limitation
     if (target.channel > 14) {
         m_actionProgress.result = ActionResult::FAILED_NOT_SUPPORTED;
-        m_actionProgress.statusText = "5GHz not supported";
+        strncpy(m_actionProgress.statusText, "5GHz not supported", sizeof(m_actionProgress.statusText) - 1);
+        m_actionProgress.statusText[sizeof(m_actionProgress.statusText) - 1] = '\0';
         m_actionActive = false;
         return false;
     }
@@ -661,7 +605,8 @@ void VanguardEngine::stopAction() {
 
     m_actionActive = false;
     m_actionProgress.result = ActionResult::CANCELLED;
-    m_actionProgress.statusText = "Stopping...";
+    strncpy(m_actionProgress.statusText, "Stopping...", sizeof(m_actionProgress.statusText) - 1);
+    m_actionProgress.statusText[sizeof(m_actionProgress.statusText) - 1] = '\0';
 
     if (Serial) {
         Serial.println("[Attack] Stopping action...");
@@ -677,6 +622,10 @@ ActionProgress VanguardEngine::getActionProgress() const {
 }
 
 void VanguardEngine::onActionProgress(ActionProgressCallback cb) {
+    m_onActionProgress = cb;
+}
+
+void VanguardEngine::setActionProgressCallback(ActionProgressCallback cb) {
     m_onActionProgress = cb;
 }
 

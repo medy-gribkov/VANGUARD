@@ -4,6 +4,7 @@
  */
 
 #include "SettingsPanel.h"
+#include <Preferences.h>
 #include <M5Cardputer.h>
 #include "CanvasManager.h"
 
@@ -18,6 +19,7 @@ SettingsPanel::SettingsPanel()
     , m_lastRenderMs(0)
 {
     initSettings();
+    loadSettings();
 }
 
 SettingsPanel::~SettingsPanel() {
@@ -153,7 +155,8 @@ void SettingsPanel::renderSetting(const Setting& setting, int y, bool highlighte
     char valueStr[16];
     switch (setting.type) {
         case SettingType::TOGGLE:
-            strcpy(valueStr, setting.value ? "ON" : "OFF");
+            strncpy(valueStr, setting.value ? "ON" : "OFF", sizeof(valueStr) - 1);
+            valueStr[sizeof(valueStr) - 1] = '\0';
             m_canvas->setTextColor(setting.value ? Theme::COLOR_SUCCESS : Theme::COLOR_TEXT_MUTED, bgColor);
             break;
         case SettingType::NUMBER:
@@ -196,6 +199,7 @@ void SettingsPanel::adjustUp() {
             s.value += s.step;
             if (s.value > s.maxVal) s.value = s.maxVal;
             m_needsRedraw = true;
+            saveSetting(m_highlightIndex);
         }
     }
 }
@@ -207,6 +211,7 @@ void SettingsPanel::adjustDown() {
             s.value -= s.step;
             if (s.value < s.minVal) s.value = s.minVal;
             m_needsRedraw = true;
+            saveSetting(m_highlightIndex);
         }
     }
 }
@@ -217,6 +222,7 @@ void SettingsPanel::select() {
         if (s.type == SettingType::TOGGLE) {
             s.value = !s.value;
             m_needsRedraw = true;
+            saveSetting(m_highlightIndex);
         }
     }
 }
@@ -243,6 +249,39 @@ bool SettingsPanel::getAutoRescan() const {
 
 bool SettingsPanel::getSoundEnabled() const {
     return m_settings[4].value != 0;
+}
+
+void SettingsPanel::loadSettings() {
+    Preferences prefs;
+    if (!prefs.begin("vanguard", true)) return; // read-only
+
+    // Settings keys match their index: s0, s1, s2, s3, s4
+    for (size_t i = 0; i < m_settings.size(); i++) {
+        char key[4];
+        snprintf(key, sizeof(key), "s%d", (int)i);
+        if (prefs.isKey(key)) {
+            m_settings[i].value = prefs.getInt(key, m_settings[i].value);
+            // Clamp to valid range
+            if (m_settings[i].value < m_settings[i].minVal) m_settings[i].value = m_settings[i].minVal;
+            if (m_settings[i].value > m_settings[i].maxVal) m_settings[i].value = m_settings[i].maxVal;
+        }
+    }
+
+    prefs.end();
+    if (Serial) Serial.println("[Settings] Loaded from NVS");
+}
+
+void SettingsPanel::saveSetting(int index) {
+    if (index < 0 || index >= (int)m_settings.size()) return;
+
+    Preferences prefs;
+    if (!prefs.begin("vanguard", false)) return; // read-write
+
+    char key[4];
+    snprintf(key, sizeof(key), "s%d", index);
+    prefs.putInt(key, m_settings[index].value);
+
+    prefs.end();
 }
 
 } // namespace Vanguard

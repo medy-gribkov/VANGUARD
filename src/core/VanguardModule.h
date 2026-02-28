@@ -38,7 +38,7 @@ public:
     bool isEnabled() const { return m_enabled; }
 
 protected:
-    bool m_enabled = false;
+    volatile bool m_enabled = false;
 };
 
 } // namespace Vanguard

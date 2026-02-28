@@ -28,9 +28,9 @@ jobs:
           key: ${{ runner.os }}-platformio
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.11'
 
       - name: Install PlatformIO
         run: |
@@ -38,16 +38,13 @@ jobs:
           pip install --upgrade platformio
 
       - name: Build Firmware
-        run: pio run
+        run: pio run -e m5stack-cardputer
 
       - name: Run Unit Tests
-        run: pio test -e native
+        run: pio test -e native --verbose
 
       - name: Check Code Quality (Cppcheck)
         run: pio check --fail-on-defect=high --skip-packages
-
-      - name: Build Firmware
-        run: pio run
 
       - name: Binary Analysis
         run: |

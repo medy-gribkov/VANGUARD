@@ -10,7 +10,7 @@
  * - List of available actions (context-aware!)
  * - Action selection and confirmation
  *
- * This is where The Assessor's philosophy shines - we ONLY show
+ * This is where VANGUARD's philosophy shines - we ONLY show
  * actions that make sense for this specific target's state.
  *
  * @example
@@ -46,7 +46,7 @@ class TargetDetail {
 public:
     /**
      * @brief Construct detail view for a target
-     * @param engine The assessor engine
+     * @param engine The VANGUARD engine
      * @param target The target to display
      */
     TargetDetail(VanguardEngine& engine, const Target& target);
@@ -190,4 +190,4 @@ private:
 
 } // namespace Vanguard
 
-#endif // ASSESSOR_TARGET_DETAIL_H
+#endif // VANGUARD_TARGET_DETAIL_H

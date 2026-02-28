@@ -51,6 +51,7 @@ private:
     // Task Loop
     static void taskLoop(void* param);
     void run();
+    void subscribeWatchdog();
     
     // Handlers
     void handleRequest(const SystemRequest& req);

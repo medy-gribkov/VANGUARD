@@ -4,6 +4,7 @@
 #include <Arduino.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <atomic>
 
 namespace Vanguard {
 
@@ -32,7 +33,8 @@ private:
     static void monitorTask(void* param);
     
     TaskHandle_t m_taskHandle;
-    bool m_running;
+    std::atomic<bool> m_running;
+    mutable portMUX_TYPE m_statusMux = portMUX_INITIALIZER_UNLOCKED;
     mutable SystemStatus m_status;
 };
 

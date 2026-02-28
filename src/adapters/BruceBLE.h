@@ -24,6 +24,7 @@
 #include "../core/VanguardModule.h"
 #include <functional>
 #include <vector>
+#include <atomic>
 
 namespace Vanguard {
 
@@ -170,6 +171,11 @@ public:
     const std::vector<BLEDeviceInfo>& getDevices() const;
 
     /**
+     * @brief Get thread-safe copy of discovered devices
+     */
+    std::vector<BLEDeviceInfo> getDevicesCopy() const;
+
+    /**
      * @brief Get device count
      */
     size_t getDeviceCount() const;
@@ -273,10 +279,11 @@ private:
     ~BruceBLE();
 
     // State
-    BLEAdapterState        m_state;
+    std::atomic<BLEAdapterState> m_state{BLEAdapterState::IDLE};
     bool                   m_initialized;
 
-    // Scan results
+    // Scan results (protected by spinlock, written from BLE callback on Core 0)
+    mutable portMUX_TYPE   m_devicesMux = portMUX_INITIALIZER_UNLOCKED;
     std::vector<BLEDeviceInfo> m_devices;
     uint32_t               m_scanStartMs;
     uint32_t               m_scanDurationMs;
@@ -306,6 +313,9 @@ private:
     void generateWindowsSpamData(uint8_t* data, size_t* len);
     void generateSamsungSpamData(uint8_t* data, size_t* len);
     void generateSourAppleData(uint8_t* data, size_t* len);
+
+    // UUID parsing for iBeacon
+    static bool parseUUID(const char* uuidStr, uint8_t* out16);
 
     // NimBLE scan callback
     class ScanCallbacks : public NimBLEAdvertisedDeviceCallbacks {

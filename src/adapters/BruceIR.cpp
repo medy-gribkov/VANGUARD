@@ -4,7 +4,18 @@
 
 namespace Vanguard {
 
-BruceIR::BruceIR() : m_initialized(false), m_recording(false), m_hasLastCapture(false) {}
+BruceIR::BruceIR()
+    : m_initialized(false)
+    , m_recording(false)
+    , m_hasLastCapture(false)
+    , m_lastProtocol(0)
+    , m_lastAddress(0)
+    , m_lastCommand(0)
+    , m_lastFlags(0)
+    , m_rawLen(0)
+{
+    memset(m_rawBuffer, 0, sizeof(m_rawBuffer));
+}
 
 BruceIR& BruceIR::getInstance() {
     static BruceIR instance;
@@ -22,7 +33,7 @@ bool BruceIR::init() {
     // RX pin is defined via IrReceiver.begin(RX_PIN)
     
     IrSender.begin(44);
-    IrReceiver.begin(43, ENABLE_LED_FEEDBACK); // Enable RX on pin 43
+    IrReceiver.begin(43, DISABLE_LED_FEEDBACK); // RX on pin 43, no LED (RMT conflict)
 
     if (Serial) {
         Serial.println("[IR] Initialized (TX:44, RX:43)");
@@ -42,8 +53,11 @@ void BruceIR::tick() {
         }
         
         m_hasLastCapture = true;
-        // Logic to store last capture for replay would go here
-        // IrReceiver.decodedIRData holds the result
+        // Store decoded data for replay
+        m_lastProtocol = (uint8_t)IrReceiver.decodedIRData.protocol;
+        m_lastAddress = IrReceiver.decodedIRData.address;
+        m_lastCommand = IrReceiver.decodedIRData.command;
+        m_lastFlags = IrReceiver.decodedIRData.flags;
         
         stopRecording(); // Stop after first capture for now
         IrReceiver.resume();
@@ -105,12 +119,29 @@ void BruceIR::stopRecording() {
     if (Serial) Serial.println("[IR] Recording stopped.");
 }
 
+void BruceIR::shutdown() {
+    if (!m_initialized) return;
+    m_recording = false;
+    IrReceiver.stop();
+    m_initialized = false;
+    if (Serial) Serial.println("[IR] Shutdown complete");
+}
+
 void BruceIR::replayLast() {
     if (!m_initialized || !m_hasLastCapture) return;
-    
+
     if (Serial) Serial.println("[IR] Replaying last capture...");
-    // Replay logic using IrSender.write(&IrReceiver.decodedIRData)
-    IrSender.write(&IrReceiver.decodedIRData);
+
+    // Reconstruct IRData from stored fields
+    IRData data;
+    memset(&data, 0, sizeof(data));
+    data.protocol = (decode_type_t)m_lastProtocol;
+    data.address = m_lastAddress;
+    data.command = m_lastCommand;
+    data.flags = m_lastFlags;
+    data.numberOfBits = 0; // write() infers from protocol
+
+    IrSender.write(&data);
 }
 
 } // namespace Vanguard

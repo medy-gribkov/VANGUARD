@@ -5,7 +5,7 @@
  * @file ActionResolver.h
  * @brief Determines which actions are valid for a given target
  *
- * This is the "brain" that makes The Assessor special. Given a target's
+ * This is the "brain" that makes VANGUARD special. Given a target's
  * current state, it returns ONLY the actions that make sense.
  *
  * Example logic:
@@ -66,7 +66,6 @@ private:
         bool         isDestructive;
         TargetType   requiredTargetType;  // UNKNOWN = any
         bool         requiresClients;
-        bool         requiresOpenNetwork;
         SecurityType incompatibleSecurity; // UNKNOWN = compatible with all
     };
 
@@ -86,4 +85,4 @@ private:
 
 } // namespace Vanguard
 
-#endif // ASSESSOR_ACTION_RESOLVER_H
+#endif // VANGUARD_ACTION_RESOLVER_H

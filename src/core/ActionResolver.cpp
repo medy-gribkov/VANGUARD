@@ -19,7 +19,7 @@ const ActionResolver::ActionDefinition ActionResolver::s_actionDefs[] = {
         "Passively capture packets",
         false,
         TargetType::ACCESS_POINT,
-        false, false,
+        false,
         SecurityType::UNKNOWN
     },
     {
@@ -29,7 +29,6 @@ const ActionResolver::ActionDefinition ActionResolver::s_actionDefs[] = {
         true,
         TargetType::ACCESS_POINT,
         true,   // Requires clients!
-        false,
         SecurityType::UNKNOWN
     },
     {
@@ -39,7 +38,6 @@ const ActionResolver::ActionDefinition ActionResolver::s_actionDefs[] = {
         true,
         TargetType::ACCESS_POINT,
         true,   // Requires clients!
-        false,
         SecurityType::UNKNOWN
     },
     {
@@ -48,7 +46,7 @@ const ActionResolver::ActionDefinition ActionResolver::s_actionDefs[] = {
         "Spam copies of this network",
         true,
         TargetType::ACCESS_POINT,
-        false, false,
+        false,
         SecurityType::UNKNOWN
     },
     {
@@ -57,7 +55,7 @@ const ActionResolver::ActionDefinition ActionResolver::s_actionDefs[] = {
         "Fake AP with captive portal",
         true,
         TargetType::ACCESS_POINT,
-        false, false,
+        false,
         SecurityType::UNKNOWN
     },
     {
@@ -66,7 +64,7 @@ const ActionResolver::ActionDefinition ActionResolver::s_actionDefs[] = {
         "Grab hash for offline crack",
         false,
         TargetType::ACCESS_POINT,
-        false, false,
+        false,
         SecurityType::WPA3_SAE  // Incompatible with WPA3
     },
     {
@@ -76,7 +74,6 @@ const ActionResolver::ActionDefinition ActionResolver::s_actionDefs[] = {
         false,
         TargetType::ACCESS_POINT,
         true,   // Need client to reconnect
-        false,
         SecurityType::OPEN  // Incompatible with Open
     },
 
@@ -87,7 +84,7 @@ const ActionResolver::ActionDefinition ActionResolver::s_actionDefs[] = {
         "Flood with pairing requests",
         true,
         TargetType::BLE_DEVICE,
-        false, false,
+        false,
         SecurityType::UNKNOWN
     },
     {
@@ -96,7 +93,7 @@ const ActionResolver::ActionDefinition ActionResolver::s_actionDefs[] = {
         "Apple device disruption",
         true,
         TargetType::BLE_DEVICE,
-        false, false,
+        false,
         SecurityType::UNKNOWN
     },
     
@@ -107,7 +104,7 @@ const ActionResolver::ActionDefinition ActionResolver::s_actionDefs[] = {
         "Record and replay IR signal",
         false,
         TargetType::IR_DEVICE,
-        false, false,
+        false,
         SecurityType::UNKNOWN
     },
     {
@@ -116,7 +113,7 @@ const ActionResolver::ActionDefinition ActionResolver::s_actionDefs[] = {
         "Power cycle nearby TVs",
         true,
         TargetType::IR_DEVICE,
-        false, false,
+        false,
         SecurityType::UNKNOWN
     }
 };
@@ -238,16 +235,18 @@ bool ActionResolver::checkSecurityCompatibility(const Target& target, SecurityTy
     return target.security != incompatible;
 }
 
+// [DORMANT] 5GHz requires external add-on hardware (ESP32-S3 is 2.4GHz only)
 bool ActionResolver::check5GHzCompatibility(const Target& target, ActionType action) const {
-    // BLE actions don't care about WiFi channel
+    // BLE and IR actions don't care about WiFi channel
     if (action == ActionType::BLE_SPAM ||
         action == ActionType::BLE_SOUR_APPLE ||
-        action == ActionType::BLE_SKIMMER_DETECT) {
+        action == ActionType::IR_REPLAY ||
+        action == ActionType::IR_TVBGONE) {
         return true;
     }
 
+    // [DORMANT] 5GHz requires external add-on hardware (ESP32-S3 is 2.4GHz only)
     // WiFi attacks can only work on 2.4GHz (channels 1-14)
-    // ESP32 cannot transmit on 5GHz bands
     if (target.channel > 14) {
         return false;  // 5GHz target, can't attack
     }

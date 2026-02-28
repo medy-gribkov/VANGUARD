@@ -110,6 +110,14 @@ public:
     // -------------------------------------------------------------------------
 
     /**
+     * @brief Get raw PROGMEM HTML pointer for a given template
+     *
+     * @param tpl Template type
+     * @return Pointer to PROGMEM HTML string
+     */
+    static const char* getTemplateHtml(PortalTemplate tpl);
+
+    /**
      * @brief Set custom portal HTML
      *
      * @param html HTML content (must include form posting to /login)

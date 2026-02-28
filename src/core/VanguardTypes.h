@@ -3,7 +3,7 @@
 
 /**
  * @file VanguardTypes.h
- * @brief Core data types for The Assessor
+ * @brief Core data types for VANGUARD
  *
  * Defines all shared enums, structs, and type aliases used across
  * the Engine, UI, and Adapter layers.
@@ -112,6 +112,7 @@ enum class ActionType : uint8_t {
  * @brief WIDS Alert Types
  */
 enum class WidsEventType : uint8_t {
+    NONE,
     DEAUTH_FLOOD,
     EAPOL_FLOOD,
     KRACK_ATTACK,     // Future
@@ -296,9 +297,9 @@ struct ActionProgress {
     uint32_t     startTimeMs;
     uint32_t     elapsedMs;
     uint32_t     packetsSent;  // For attacks that send packets
-    const char*  statusText;   // "Sending deauth frames..."
+    char         statusText[32]; // Fixed buffer, no dangling pointers
 };
 
 } // namespace Vanguard
 
-#endif // ASSESSOR_VanguardTypes.h
+#endif // VANGUARD_TYPES_H

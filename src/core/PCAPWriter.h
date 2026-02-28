@@ -41,10 +41,9 @@ private:
     char m_filename[64];
     bool m_headerWritten;
     File m_file;
-    uint8_t m_buffer[2048]; // 2KB write buffer
-    size_t m_bufferPos = 0;
+    uint32_t m_lastFlushMs = 0;
 };
 
 } // namespace Vanguard
 
-#endif // ASSESSOR_PCAP_WRITER_H
+#endif // VANGUARD_PCAP_WRITER_H

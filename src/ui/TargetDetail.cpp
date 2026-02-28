@@ -57,7 +57,7 @@ void TargetDetail::tick() {
             m_result = m_progress.result;
             m_resultMessage = (m_result == ActionResult::SUCCESS)
                 ? "Attack complete"
-                : m_progress.statusText ? m_progress.statusText : "Attack failed";
+                : (m_progress.statusText[0] != '\0') ? m_progress.statusText : "Attack failed";
             transitionTo(DetailViewState::RESULT);
         }
     }
@@ -79,6 +79,7 @@ void TargetDetail::render() {
 
     switch (m_state) {
         case DetailViewState::INFO:
+        case DetailViewState::CLIENT_SELECT:
             renderInfo();
             break;
         case DetailViewState::ACTIONS:
@@ -525,7 +526,7 @@ void TargetDetail::renderExecuting() {
 
     // Status
     m_canvas->setTextColor(Theme::COLOR_ACCENT);
-    m_canvas->drawString(m_progress.statusText ? m_progress.statusText : "Running...",
+    m_canvas->drawString(m_progress.statusText[0] ? m_progress.statusText : "Running...",
                          centerX, centerY - 25);
 
     // Animated indicator

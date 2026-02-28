@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <esp_wifi.h>
+#include <freertos/semphr.h>
 
 namespace Vanguard {
 
@@ -41,6 +42,7 @@ public:
 
 private:
     RadioWarden();
+    SemaphoreHandle_t m_radioMutex;
     RadioOwner m_currentOwner = RadioOwner::NONE;
 
     bool initWiFiSTA();

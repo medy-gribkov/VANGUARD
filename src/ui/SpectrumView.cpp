@@ -11,6 +11,7 @@ namespace Vanguard {
 
 SpectrumView::SpectrumView()
     : m_visible(false)
+    , m_wantsBack(false)
     , m_canvas(&CanvasManager::getInstance().getCanvas())
     , m_lastRenderMs(0)
     , m_lastHopMs(0)
@@ -34,6 +35,7 @@ SpectrumView::~SpectrumView() {
 
 void SpectrumView::show() {
     m_visible = true;
+    m_wantsBack = false;
     m_paused = false;
     m_currentChannel = 1;
     m_lastHopMs = millis();
@@ -63,11 +65,7 @@ void SpectrumView::hide() {
 void SpectrumView::handleInput() {
     if (M5Cardputer.Keyboard.isPressed()) {
         if (M5Cardputer.Keyboard.isKeyPressed('q') || M5Cardputer.Keyboard.isKeyPressed('Q')) {
-            // Back handled by main loop? Or internally?
-            // Usually main loop handles state transitions.
-            // We just provide checking.
-            // Ideally we need a 'wantsBack' flag like other views.
-            // But for now, we'll assume Main handles Q.
+            m_wantsBack = true;
         }
         if (M5Cardputer.Keyboard.isKeyPressed(KEY_ENTER)) {
             m_paused = !m_paused;

@@ -73,4 +73,4 @@ private:
 
 } // namespace Vanguard
 
-#endif // ASSESSOR_SCAN_SELECTOR_H
+#endif // VANGUARD_SCAN_SELECTOR_H

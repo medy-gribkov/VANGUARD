@@ -37,10 +37,10 @@ struct ActionRequest {
 
 struct SystemRequest {
     SysCommand cmd;
-    void* payload;       // Command specific data (must be heap allocated or static)
-    
+    void* payload = nullptr;       // Command specific data (must be heap allocated or static)
+
     // Helper to free payload if needed
-    void (*freeCb)(void*); 
+    void (*freeCb)(void*) = nullptr;
 };
 
 
@@ -77,11 +77,11 @@ struct AssociationEvent {
 
 struct SystemEvent {
     SysEventType type;
-    void* data;          // Event specific data
-    size_t dataLen;
-    
+    void* data = nullptr;          // Event specific data
+    size_t dataLen = 0;
+
     // Helper to identify primitive data vs pointers
-    bool isPointer; 
+    bool isPointer = false;
 };
 
 } // namespace Vanguard

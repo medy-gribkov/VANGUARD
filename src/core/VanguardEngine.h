@@ -28,7 +28,6 @@
 
 #include "VanguardTypes.h"
 #include "TargetTable.h"
-#include "TargetTable.h"
 #include "ActionResolver.h"
 #include "IPC.h"
 #include <functional>
@@ -262,10 +261,6 @@ private:
     TargetTable    m_targetTable;
     ActionResolver m_actionResolver;
 
-    // Adapters (lazy-initialized)
-    // BruceWiFiAdapter* m_wifiAdapter;
-    // BruceBLEAdapter*  m_bleAdapter;
-
     // Callbacks
     ScanProgressCallback   m_onScanProgress;
     ActionProgressCallback m_onActionProgress;
@@ -277,6 +272,7 @@ private:
     // BLE transition state machine (non-blocking)
     uint8_t  m_transitionStep;     // Current step in WiFi→BLE transition
     uint32_t m_transitionStartMs;  // When current step started
+    uint32_t m_transitionTotalStartMs; // When entire transition began (for total timeout)
     uint8_t  m_bleInitAttempts;    // Number of BLE init retry attempts
 
     // Internal tick handlers
@@ -292,9 +288,8 @@ private:
 
     // Internal helpers
     void processScanResults(int count);
-    void processBLEScanResults(); // Replaced by event handling? No, may still use for batching if needed
 };
 
 } // namespace Vanguard
 
-#endif // ASSESSOR_ENGINE_H
+#endif // VANGUARD_ENGINE_H

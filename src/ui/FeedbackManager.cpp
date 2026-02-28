@@ -3,9 +3,8 @@
 
 namespace Vanguard {
 
-static constexpr int BUZZER_PIN = 43; // M5Cardputer Buzzer (G43)
-static constexpr int MOTOR_PIN  = 44; // M5Cardputer Motor (not strictly a motor, usually buzzer is used for haptics)
-// Actually, Cardputer uses the buzzer for "haptic" feel too by low-freq vibration.
+// M5Cardputer speaker uses I2S via M5's Speaker class, not direct GPIO.
+// GPIO 43/44 are reserved for IR (TX:44, RX:43).
 
 FeedbackManager& FeedbackManager::getInstance() {
     static FeedbackManager instance;

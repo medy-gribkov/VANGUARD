@@ -9,10 +9,17 @@ RadioWarden& RadioWarden::getInstance() {
     return instance;
 }
 
-RadioWarden::RadioWarden() {}
+RadioWarden::RadioWarden() {
+    m_radioMutex = xSemaphoreCreateMutex();
+}
 
 bool RadioWarden::requestRadio(RadioOwner owner) {
     if (m_currentOwner == owner) return true;
+
+    if (xSemaphoreTake(m_radioMutex, pdMS_TO_TICKS(2000)) != pdTRUE) {
+        if (Serial) Serial.println("[Warden] Failed to acquire radio mutex");
+        return false;
+    }
 
     if (Serial) {
         Serial.printf("[Warden] Requesting handover: %d -> %d\n", (int)m_currentOwner, (int)owner);
@@ -39,6 +46,7 @@ bool RadioWarden::requestRadio(RadioOwner owner) {
     if (success) {
         m_currentOwner = owner;
     }
+    xSemaphoreGive(m_radioMutex);
     return success;
 }
 
@@ -58,8 +66,8 @@ void RadioWarden::shutdownCurrent() {
         ::WiFi.disconnect(true);
         ::WiFi.mode(WIFI_OFF);
         esp_wifi_stop();
-        // Give hardware time to settle
-        delay(50); 
+        // Give hardware time to settle (yield to scheduler, don't busy-wait)
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 
     // BLE Cleanup - we don't deinit NimBLE, just stop activities

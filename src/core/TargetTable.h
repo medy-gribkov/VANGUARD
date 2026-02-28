@@ -175,4 +175,4 @@ private:
 
 } // namespace Vanguard
 
-#endif // ASSESSOR_TARGET_TABLE_H
+#endif // VANGUARD_TARGET_TABLE_H

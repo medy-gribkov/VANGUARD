@@ -109,30 +109,6 @@ void BootSequence::markOnboardingComplete() {
 // RENDERING
 // =============================================================================
 
-void BootSequence::renderLogoFadeIn() {
-    drawLogo(m_fadeLevel);
-}
-
-void BootSequence::renderTaglineFadeIn() {
-    drawLogo(255);
-    drawTagline(m_fadeLevel);
-}
-
-void BootSequence::renderHold() {
-    drawLogo(255);
-    drawTagline(255);
-}
-
-void BootSequence::renderOnboarding() {
-    drawLogo(255);
-    drawTagline(255);
-}
-
-void BootSequence::renderFadeOut() {
-    drawLogo(m_fadeLevel);
-    drawTagline(m_fadeLevel);
-}
-
 void BootSequence::drawLogo(uint8_t alpha) {
     int16_t centerX = Theme::SCREEN_WIDTH / 2;
     int16_t y = 30;
@@ -186,11 +162,7 @@ void BootSequence::drawTagline(uint8_t alpha) {
     uint8_t dimAlpha = alpha / 3;
     uint16_t dimColor = Theme::rgb(dimAlpha, dimAlpha, dimAlpha);
     M5Cardputer.Display.setTextColor(dimColor, Theme::COLOR_BACKGROUND);
-    M5Cardputer.Display.drawString("v0.2", centerX, y + 20);
-}
-
-void BootSequence::drawOnboardingCard() {
-    // Simplified - skip for now
+    M5Cardputer.Display.drawString(Theme::VERSION_STRING, centerX, y + 20);
 }
 
 // =============================================================================

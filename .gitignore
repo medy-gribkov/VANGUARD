@@ -96,3 +96,9 @@ handshakes/
 .Spotlight-V100
 .Trashes
 ehthumbs.db
+
+# Build artifacts and logs
+build_log*.txt
+build_stdout.txt
+build_stderr.txt
+test_results.txt

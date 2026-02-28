@@ -1,6 +1,6 @@
 /**
  * @file BruceBLE.cpp
- * @brief BLE scanning and spam attacks for The Assessor
+ * @brief BLE scanning and spam attacks for VANGUARD
  *
  * Uses NimBLE-Arduino for efficient BLE operations.
  * Implements scanning and spam attacks adapted from Bruce.
@@ -99,7 +99,7 @@ bool BruceBLE::init() {
     m_advertising = NimBLEDevice::getAdvertising();
     
     m_initialized = true;
-    if (Serial) Serial.printf("[BLE] Init-Once complete (%ums)\n", millis() - initStart);
+    if (Serial) Serial.printf("[BLE] Init-Once complete (%lums)\n", millis() - initStart);
     return true;
 }
 
@@ -150,7 +150,9 @@ bool BruceBLE::beginScan(uint32_t durationMs) {
 
     stopHardwareActivities();
 
+    portENTER_CRITICAL(&m_devicesMux);
     m_devices.clear();
+    portEXIT_CRITICAL(&m_devicesMux);
     m_scanStartMs = millis();
     m_scanDurationMs = durationMs;
 
@@ -167,9 +169,8 @@ bool BruceBLE::beginScan(uint32_t durationMs) {
 void BruceBLE::stopScan() {
     if (m_state == BLEAdapterState::SCANNING) {
         // Force stop scanner
-        if (m_scanner) {
-            m_scanner->stop();
-        }
+        if (!m_scanner) return;  // Safety check
+        m_scanner->stop();
 
         // Always transition state immediately
         m_state = BLEAdapterState::IDLE;
@@ -190,7 +191,17 @@ bool BruceBLE::isScanComplete() const {
 }
 
 const std::vector<BLEDeviceInfo>& BruceBLE::getDevices() const {
+    // Warning: Not thread-safe if scan callbacks are active on Core 0.
+    // Currently unused externally (BLE results flow via onDeviceFound IPC).
+    // If called during scan, use getDevicesCopy() instead.
     return m_devices;
+}
+
+std::vector<BLEDeviceInfo> BruceBLE::getDevicesCopy() const {
+    portENTER_CRITICAL(&m_devicesMux);
+    std::vector<BLEDeviceInfo> copy = m_devices;
+    portEXIT_CRITICAL(&m_devicesMux);
+    return copy;
 }
 
 size_t BruceBLE::getDeviceCount() const {
@@ -206,13 +217,13 @@ void BruceBLE::onScanComplete(BLEScanCompleteCallback cb) {
 }
 
 void BruceBLE::tickScan() {
+    if (!m_scanner) return;  // Safety check
+
     // Check for timeout
     uint32_t elapsed = millis() - m_scanStartMs;
     if (m_scanDurationMs > 0 && elapsed >= m_scanDurationMs) {
         // Force stop the scanner - NimBLE doesn't always fire completion callback
-        if (m_scanner) {
-            m_scanner->stop();
-        }
+        m_scanner->stop();
 
         // Force state transition regardless of scanner response
         m_state = BLEAdapterState::IDLE;
@@ -272,24 +283,26 @@ void BruceBLE::ScanCallbacks::onResult(NimBLEAdvertisedDevice* device) {
     // Check for skimmer signature
     info.isSuspicious = m_parent->isLikelySkimmer(info);
 
-    // Check if we already have this device
+    // Check if we already have this device (under spinlock, BLE callback runs on Core 0)
     bool found = false;
+    bool isNew = false;
+    portENTER_CRITICAL(&m_parent->m_devicesMux);
     for (auto& existing : m_parent->m_devices) {
         if (memcmp(existing.address, info.address, 6) == 0) {
-            // Update existing
             existing.rssi = info.rssi;
             existing.lastSeenMs = info.lastSeenMs;
             found = true;
             break;
         }
     }
-
     if (!found) {
         m_parent->m_devices.push_back(info);
+        isNew = true;
+    }
+    portEXIT_CRITICAL(&m_parent->m_devicesMux);
 
-        if (m_parent->m_onDeviceFound) {
-            m_parent->m_onDeviceFound(info);
-        }
+    if (isNew && m_parent->m_onDeviceFound) {
+        m_parent->m_onDeviceFound(info);
     }
 }
 
@@ -319,6 +332,7 @@ bool BruceBLE::startSpam(BLESpamType type) {
 
 void BruceBLE::stopSpam() {
     if (m_state == BLEAdapterState::SPAMMING) {
+        if (!m_advertising) return;  // Safety check
         m_advertising->stop();
         m_state = BLEAdapterState::IDLE;
 
@@ -337,6 +351,8 @@ void BruceBLE::onSpamProgress(BLESpamProgressCallback cb) {
 }
 
 void BruceBLE::tickSpam() {
+    if (!m_advertising) return;  // Safety check
+
     uint32_t now = millis();
     if (now - m_lastAdvMs < BLE_ADV_INTERVAL_MS) {
         return;
@@ -532,10 +548,11 @@ bool BruceBLE::spoofBeacon(const char* name,
     beaconData[0] = 0x02;  // Type: iBeacon
     beaconData[1] = 0x15;  // Length: 21 bytes
 
-    // Parse UUID (simplified - assumes valid format)
-    // Just fill with random for now
-    for (int i = 0; i < 16; i++) {
-        beaconData[2 + i] = random(256);
+    // Parse UUID string, fall back to random if invalid
+    if (!uuid || !parseUUID(uuid, &beaconData[2])) {
+        for (int i = 0; i < 16; i++) {
+            beaconData[2 + i] = random(256);
+        }
     }
 
     // Major
@@ -571,6 +588,7 @@ bool BruceBLE::cloneBeacon(const BLEDeviceInfo& original) {
 
 void BruceBLE::stopBeacon() {
     if (m_state == BLEAdapterState::BEACON_SPOOFING) {
+        if (!m_advertising) return;  // Safety check
         m_advertising->stop();
         m_state = BLEAdapterState::IDLE;
     }
@@ -581,36 +599,84 @@ void BruceBLE::tickBeacon() {
 }
 
 // =============================================================================
+// UUID PARSING
+// =============================================================================
+
+bool BruceBLE::parseUUID(const char* uuidStr, uint8_t* out16) {
+    if (!uuidStr || !out16) return false;
+
+    // Parse "12345678-1234-1234-1234-123456789ABC" format
+    char clean[33];
+    int j = 0;
+    for (int i = 0; uuidStr[i] && j < 32; i++) {
+        if (uuidStr[i] != '-') {
+            clean[j++] = uuidStr[i];
+        }
+    }
+    clean[j] = '\0';
+    if (j != 32) return false;
+
+    for (int i = 0; i < 16; i++) {
+        char hex[3] = { clean[i*2], clean[i*2+1], '\0' };
+        out16[i] = (uint8_t)strtol(hex, nullptr, 16);
+    }
+    return true;
+}
+
+// =============================================================================
 // DETECTION
 // =============================================================================
 
 bool BruceBLE::isLikelySkimmer(const BLEDeviceInfo& device) const {
-    // Check for common skimmer signatures
+    int score = 0;
 
-    // HC-05/HC-06 Bluetooth modules (common in skimmers)
+    // HC-05/HC-06 Bluetooth modules (very common in skimmers)
     if (strncmp(device.name, "HC-05", 5) == 0 ||
         strncmp(device.name, "HC-06", 5) == 0) {
-        return true;
+        score += 5;
     }
 
-    // No name, connectable, no services - suspicious
+    // JDY, BT04 modules (cheap serial Bluetooth, used in skimmers)
+    if (strncmp(device.name, "JDY-", 4) == 0 ||
+        strncmp(device.name, "BT04", 4) == 0 ||
+        strncmp(device.name, "BT05", 4) == 0) {
+        score += 4;
+    }
+
+    // No name, connectable, no services - suspicious generic module
     if (strlen(device.name) == 0 && device.isConnectable && !device.hasServices) {
-        return true;
+        score += 3;
     }
 
-    // Unknown Chinese manufacturer IDs often used in skimmers
-    // Add more as identified
+    // Generic/unknown manufacturer ID (0x0000 or 0xFFFF)
+    if (device.manufacturerDataLen >= 2) {
+        if (device.manufacturerId == 0x0000 || device.manufacturerId == 0xFFFF) {
+            score += 2;
+        }
+    }
 
-    return false;
+    // Very strong signal from unknown device (likely physically close/embedded)
+    if (device.rssi > -40 && strlen(device.name) == 0) {
+        score += 2;
+    }
+
+    // Connectable with no advertised name is suspicious for embedded hardware
+    if (device.isConnectable && strlen(device.name) == 0 && device.manufacturerDataLen == 0) {
+        score += 2;
+    }
+
+    return score >= 4;
 }
 
 std::vector<BLEDeviceInfo> BruceBLE::getSuspiciousDevices() const {
     std::vector<BLEDeviceInfo> suspicious;
+    portENTER_CRITICAL(&m_devicesMux);
     for (const auto& device : m_devices) {
         if (isLikelySkimmer(device)) {
             suspicious.push_back(device);
         }
     }
+    portEXIT_CRITICAL(&m_devicesMux);
     return suspicious;
 }
 

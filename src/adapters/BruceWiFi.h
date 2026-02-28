@@ -14,7 +14,7 @@
  * - deauthFloodAttack() → deauthAll()
  * - beaconAttack() → beaconFlood()
  * - capture_handshake() → captureHandshake()
- * - EvilPortal class → startEvilTwin()
+ * - EvilPortal class → handled via SystemTask
  * - sniffer functions → startMonitor()
  *
  * @see BruceAnalysis.md for full mapping
@@ -56,6 +56,7 @@ enum class WiFiAdapterState : uint8_t {
     CAPTURING_HANDSHAKE,
     EVIL_TWIN_ACTIVE,
     MONITORING,
+    PROBE_FLOODING,
     ERROR
 };
 
@@ -79,7 +80,6 @@ struct ScanResultEntry {
 using ScanCompleteCallback = std::function<void(int networkCount)>;
 using AttackProgressCallback = std::function<void(uint32_t packetsSent)>;
 using HandshakeCapturedCallback = std::function<void(const uint8_t* bssid)>;
-using CredentialCapturedCallback = std::function<void(const char* ssid, const char* password)>;
 using PacketCallback = std::function<void(const uint8_t* payload, uint16_t len, int8_t rssi)>;
 using AssociationCallback = std::function<void(const uint8_t* clientMac, const uint8_t* apMac)>;
 using WidsCallback = std::function<void(WidsEventType type, int count)>;
@@ -268,40 +268,6 @@ public:
     void onHandshakeCaptured(HandshakeCapturedCallback cb);
 
     // -------------------------------------------------------------------------
-    // Evil Twin
-    // -------------------------------------------------------------------------
-
-    /**
-     * @brief Start evil twin attack
-     *
-     * Wraps Bruce's EvilPortal class.
-     * Creates fake AP with captive portal.
-     *
-     * @param ssid Network name to clone
-     * @param channel Channel to operate on
-     * @param sendDeauth Deauth real AP to force clients over
-     * @return true if portal started
-     */
-    bool startEvilTwin(const char* ssid,
-                       uint8_t channel,
-                       bool sendDeauth = true);
-
-    /**
-     * @brief Stop evil twin and restore normal mode
-     */
-    void stopEvilTwin();
-
-    /**
-     * @brief Get captured credentials count
-     */
-    int getCapturedCredentialCount() const;
-
-    /**
-     * @brief Register credential capture callback
-     */
-    void onCredentialCaptured(CredentialCapturedCallback cb);
-
-    // -------------------------------------------------------------------------
     // Passive Monitoring
     // -------------------------------------------------------------------------
 
@@ -330,6 +296,18 @@ public:
      * @brief Register association callback (client discovery)
      */
     void onAssociation(AssociationCallback cb);
+
+    // -------------------------------------------------------------------------
+    // Probe Flood
+    // -------------------------------------------------------------------------
+
+    /**
+     * @brief Start probe request flood
+     * @param channel WiFi channel to flood
+     * @return true if attack started
+     */
+    bool startProbeFlood(uint8_t channel);
+    void stopProbeFlood();
 
     // -------------------------------------------------------------------------
     // Attack Control (Common)
@@ -395,14 +373,14 @@ private:
     // Internal state
     bool m_initialized;
     bool m_enabled;
-    WiFiAdapterState m_state;
+    std::atomic<WiFiAdapterState> m_state{WiFiAdapterState::IDLE};
     uint8_t m_currentChannel;
 
     // Scan state
     bool m_promiscuousEnabled;
 
     // Attack state
-    uint32_t           m_packetsSent;
+    std::atomic<uint32_t> m_packetsSent{0};
     uint32_t           m_lastPacketMs;
     uint8_t            m_attackTargetMac[6];
     uint8_t            m_attackApMac[6];
@@ -414,7 +392,6 @@ private:
     ScanCompleteCallback      m_onScanComplete;
     AttackProgressCallback    m_onAttackProgress;
     HandshakeCapturedCallback m_onHandshakeCaptured;
-    CredentialCapturedCallback m_onCredentialCaptured;
     PacketCallback            m_onPacketReceived;
     AssociationCallback       m_onAssociation;
     
@@ -426,7 +403,7 @@ private:
     uint32_t                  m_lastWidsCheckMs;
 
     // Beacon flood state (moved from file-scope statics)
-    const char**              m_beaconSsids;
+    char                      m_beaconSsidStorage[MAX_BEACON_SSIDS][33]; // Owned SSID copies
     size_t                    m_beaconSsidCount;
     size_t                    m_beaconCurrentIndex;
     uint8_t                   m_beaconChannel;
@@ -445,6 +422,7 @@ private:
     void tickBeaconFlood();
     void tickHandshakeCapture();
     void tickMonitor();
+    void tickProbeFlood();
 
     // Frame builders (from Bruce)
     void buildDeauthFrame(uint8_t* frame, const uint8_t* dst,
@@ -461,4 +439,4 @@ public:
 
 } // namespace Vanguard
 
-#endif // ASSESSOR_BRUCE_WIFI_H
+#endif // VANGUARD_BRUCE_WIFI_H

@@ -50,10 +50,9 @@ bool PCAPWriter::writePacket(const uint8_t* data, uint16_t len) {
     m_file.write((uint8_t*)&pktHeader, sizeof(pktHeader));
     m_file.write(data, len);
 
-    static uint32_t lastFlush = 0;
-    if (millis() - lastFlush > 500) { // Flush every 500ms to avoid blocking but ensure data persistence
+    if (millis() - m_lastFlushMs > 500) {
         m_file.flush();
-        lastFlush = millis();
+        m_lastFlushMs = millis();
     }
 
     return true;

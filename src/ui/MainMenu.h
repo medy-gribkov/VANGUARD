@@ -8,7 +8,7 @@
  * Press 'M' from anywhere to bring up the menu.
  * Menu options:
  * - Rescan WiFi
- * - Settings (TODO)
+ * - Settings
  * - About
  * - Back to Radar
  */
@@ -87,4 +87,4 @@ private:
 
 } // namespace Vanguard
 
-#endif // ASSESSOR_MAIN_MENU_H
+#endif // VANGUARD_MAIN_MENU_H

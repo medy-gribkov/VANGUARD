@@ -1,88 +1,121 @@
 <div align="center">
-  
-  <h1>🛡️ VANGUARD</h1>
-  <h3>Target-First Wireless Auditing Suite for M5Cardputer</h3>
+
+  <h1>VANGUARD</h1>
+  <h3>Target-First Wireless Auditing Suite for M5Cardputer ADV</h3>
 
   <p>
     <a href="https://github.com/Mahdy-gribkov/VANGUARD/actions"><img src="https://img.shields.io/github/actions/workflow/status/Mahdy-gribkov/VANGUARD/build.yml?style=for-the-badge&label=BUILD" alt="Build Status"></a>
     <img src="https://img.shields.io/badge/Platform-ESP32--S3-blue?style=for-the-badge&logo=espressif" alt="Platform ESP32">
-    <img src="https://img.shields.io/badge/Version-v1.1--ALPHA-orange?style=for-the-badge" alt="Version">
-    <img src="https://img.shields.io/badge/License-MIT-green?style=for-the-badge" alt="License">
+    <img src="https://img.shields.io/badge/Version-v2.0-orange?style=for-the-badge" alt="Version">
+    <img src="https://img.shields.io/badge/License-AGPL--3.0-green?style=for-the-badge" alt="License">
   </p>
 
-  <p><b>Turn your M5Cardputer into a pocket-sized cyber-swiss-army-knife.</b></p>
-  <p><i>Standard wireless tools focus on lists. Vanguard focuses on <br><b>TARGETS</b>.</i></p>
+  <p><b>Turn your M5Cardputer into a pocket-sized wireless auditing tool.</b></p>
+  <p>Standard wireless tools focus on attack menus. VANGUARD focuses on <b>TARGETS</b>.</p>
 
 </div>
 
 ---
 
-## ⚡ Features
+## How It Works
 
-### 📡 Target-Oriented Warfare
-Why scroll through 100 APs when you only care about one?
-- **Lock On**: Select a target via WiFi or BLE MAC.
-- **Focus Fire**: All tools (Deauth, Probe Sniff, Beacon Spam) auto-target your selection.
-- **Persistence**: Remembers targets across reboots.
+Traditional pentest tools: pick an attack category, then find a target.
 
-### 🔍 Bruce-Powered Core
-Built on the legendary **Bruce** firmware logic, instantiated for specific tactical needs.
-- **Hybrid Scanning**: Simultaneous WiFi + BLE reconnaissance.
-- **Lazy Loading**: Zero-latency boot; heavy radios only initialize when you pull the trigger.
-- **Visual Feedback**: Real-time RSSI radar and signal strength graphing.
+VANGUARD inverts this:
 
-### 🎨 Premium "Dark Mode" UI
-- **Zero-Flicker**: Double-buffered display rendering.
-- **Glitch Aesthetics**: Cyberpunk-inspired transitions and boot sequences.
-- **Haptic Feedback**: Feel the packets.
+1. Boot. Scan begins.
+2. See every target in range (WiFi, BLE, IR).
+3. Select one. Only valid actions appear.
+4. Execute. No guessing, no "incompatible target" errors.
+
+The target is the noun. The attack is the verb. Pick the noun first.
 
 ---
 
-## 🚀 Getting Started
+## Features
 
-### Prerequisites
-- **M5Stack Cardputer** (ESP32-S3)
-- SD Card (Optional, for PCAP storage)
+### Scanning
+- **WiFi discovery**: 2.4GHz AP and station detection with RSSI, channel, security info
+- **BLE scanning**: Device enumeration via NimBLE
+- **Combined scan**: WiFi then BLE in sequence
+- **IR targets**: Virtual IR target for TV-B-Gone and IR replay
 
-### Installation (The Easy Way)
-1.  Go to **[Releases](https://github.com/Mahdy-gribkov/VANGUARD/releases)**.
-2.  Download the latest `firmware.bin`.
-3.  Flash using [M5Burner](https://m5stack.com/pages/download) or [Esptool](https://github.com/espressif/esptool).
+### Attacks (WiFi)
+- **Deauth All/Single**: Disconnect clients from an AP (requires detected clients)
+- **Beacon Flood**: Clone and spam copies of a target network
+- **Evil Portal**: Fake AP with captive portal for credential capture
+- **Handshake Capture**: 4-way WPA handshake sniffing (PCAP to SD)
 
-### Installation (The "Genius" Way)
-Clone the repo and build it yourself.
+### Attacks (BLE)
+- **BLE Spam**: Flood target with pairing requests
+- **Sour Apple**: Apple device disruption
+
+### IR
+- **TV-B-Gone**: Power cycle nearby TVs using known codes
+- **IR Replay**: Record and replay infrared signals
+
+### Context-Aware Actions
+- WPA3 target? PMKID capture hidden (not vulnerable).
+- No clients? Deauth hidden (nothing to deauth).
+- 5GHz network? WiFi attacks hidden (ESP32-S3 is 2.4GHz only).
+
+---
+
+## Hardware
+
+- **Device**: M5Stack Cardputer ADV (ESP32-S3FN8, 8MB flash, no PSRAM)
+- **Keyboard**: TCA8418 I2C matrix controller at 0x34
+- **Display**: ST7789 135x240 SPI
+- **SD Card**: Optional, for PCAP storage
+
+---
+
+## Building
+
+Requires [PlatformIO](https://platformio.org/).
+
 ```bash
 git clone https://github.com/Mahdy-gribkov/VANGUARD.git
 cd VANGUARD
 pio run -t upload
 ```
 
+### Running Tests
+
+```bash
+pio test -e native --verbose
+```
+
 ---
 
-## 🎮 Controls
+## Controls
 
 | Key | Action | Context |
 | :--- | :--- | :--- |
-| **Starts** | **Boot** | Power On / Reset |
-| `R` | **WiFi Scan** | Scan Selector |
-| `B` | **BLE Scan** | Scan Selector |
-| `Enter` | **Select / Attack** | Menus & Radar |
-| `M` | **Main Menu** | Global |
-| `Q` / `Bksp` | **Back / Cancel** | Menus |
-| `Arrows` | **Navigate** | Radar / Target List |
+| `R` | WiFi Scan | Scan selector / Radar (rescan) |
+| `B` | BLE Scan | Scan selector |
+| `Enter` | Select / Confirm | All menus |
+| `M` | Main Menu | Global (except boot) |
+| `Q` / `Backspace` | Back / Cancel | All screens |
+| `;` `,` | Navigate Up | Lists and menus |
+| `.` `/` | Navigate Down | Lists and menus |
 
 ---
 
-## 🛠️ Roadmap (Alpha 1.x)
-- [x] **Core Engine**: Lazy Loading & Stability
-- [x] **Input System**: Native driver handling
-- [x] **PCAP Buffering**: Save handshakes to SD (Verified)
-- [x] **IR Blaster**: TV-B-Gone & Receiver (Verified)
-- [ ] **BadUSB**: HID Rubber Ducky scripts
-- [ ] **PMKID Capture**: Offline cracking support
+## Project Structure
+
+```
+src/
+  core/        Engine, TargetTable, ActionResolver, SystemTask, IPC
+  adapters/    BruceWiFi, BruceBLE, BruceIR, EvilPortal
+  ui/          BootSequence, TargetRadar, TargetDetail, MainMenu, Theme
+test/          Native unit tests (googletest)
+```
 
 ---
 
-<div align="center">
-  <i>Crafted with 💀 by the Vanguard Team</i>
-</div>
+## License
+
+AGPL-3.0. See LICENSE.
+
+Built by SporeSec.

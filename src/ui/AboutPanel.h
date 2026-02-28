@@ -46,4 +46,4 @@ private:
 
 } // namespace Vanguard
 
-#endif // ASSESSOR_ABOUT_PANEL_H
+#endif // VANGUARD_ABOUT_PANEL_H

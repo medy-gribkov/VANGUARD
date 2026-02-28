@@ -3,7 +3,9 @@
 
 namespace Vanguard {
 
-SDManager::SDManager() : m_initialized(false) {}
+SDManager::SDManager() : m_initialized(false) {
+    m_fileMutex = xSemaphoreCreateMutex();
+}
 
 SDManager& SDManager::getInstance() {
     static SDManager instance;
@@ -48,32 +50,44 @@ bool SDManager::ensureDirectory(const char* path) {
 }
 
 void SDManager::createFolderStructure() {
-    ensureDirectory("/captures");
-    ensureDirectory("/evil_portal");
-    ensureDirectory("/evil_portal/templates");
-    ensureDirectory("/logs");
+    ensureDirectory("/vanguard");
+    ensureDirectory("/vanguard/captures");
+    ensureDirectory("/vanguard/evil_portal");
+    ensureDirectory("/vanguard/evil_portal/templates");
+    ensureDirectory("/vanguard/logs");
+    ensureDirectory("/vanguard/hid_payloads");
 }
 
 bool SDManager::appendToFile(const char* path, const char* data) {
     if (!m_initialized) return false;
 
+    if (xSemaphoreTake(m_fileMutex, pdMS_TO_TICKS(500)) != pdTRUE) return false;
+
     File file = SD.open(path, FILE_APPEND);
     if (!file) {
+        xSemaphoreGive(m_fileMutex);
         if (Serial) Serial.printf("[SD] ERROR: Failed to open %s for append\n", path);
         return false;
     }
 
     bool success = file.println(data);
     file.close();
+    xSemaphoreGive(m_fileMutex);
     return success;
 }
 
-String SDManager::readFile(const char* path) {
+String SDManager::readFile(const char* path, size_t maxBytes) {
     if (!m_initialized) return "";
 
     File file = SD.open(path, FILE_READ);
     if (!file) {
         if (Serial) Serial.printf("[SD] ERROR: Failed to open %s for read\n", path);
+        return "";
+    }
+
+    if (file.size() > maxBytes) {
+        file.close();
+        if (Serial) Serial.printf("[SD] WARN: %s too large (%u > %u)\n", path, file.size(), maxBytes);
         return "";
     }
 
@@ -92,7 +106,7 @@ bool SDManager::logCredential(const char* ssid, const char* user, const char* pa
     snprintf(entry, sizeof(entry), "%lu,%s,%s,%s,%s", 
              millis(), ssid, user, pass, mac);
     
-    return appendToFile("/evil_portal/credentials.csv", entry);
+    return appendToFile("/vanguard/evil_portal/credentials.csv", entry);
 }
 
 } // namespace Vanguard

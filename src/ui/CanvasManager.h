@@ -27,9 +27,7 @@ public:
     M5Canvas& getCanvas() {
         if (!m_spriteCreated) {
             m_canvas.setColorDepth(16); // 16-bit color (RGB565)
-            // m_canvas.setPsram(true); // Explicitly use PSRAM if available
-            // Note: M5GFX usually auto-allocates from PSRAM for large sprites if available,
-            // but setting it true ensures it. M5Cardputer has PSRAM.
+            // Note: M5Cardputer FN8 variant has NO PSRAM. Sprite uses internal SRAM.
             
             // Try to create sprite
             void* ptr = m_canvas.createSprite(Theme::SCREEN_WIDTH, Theme::SCREEN_HEIGHT);
@@ -58,9 +56,11 @@ private:
         freeSprite();
     }
 
-    // Prevent copying
+    // Prevent copying and moving
     CanvasManager(const CanvasManager&) = delete;
     CanvasManager& operator=(const CanvasManager&) = delete;
+    CanvasManager(CanvasManager&&) = delete;
+    CanvasManager& operator=(CanvasManager&&) = delete;
 
     M5Canvas m_canvas;
     bool     m_spriteCreated;

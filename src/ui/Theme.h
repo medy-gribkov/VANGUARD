@@ -82,7 +82,7 @@ constexpr int16_t MARGIN_XS      = 2;
 constexpr int16_t MARGIN_SM      = 4;
 // Branding
 static constexpr const char* APP_NAME = "VANGUARD";
-static constexpr const char* VERSION_STRING = "v1.1-I2C-RECOV";
+static constexpr const char* VERSION_STRING = "v2.0";
 
 // =============================================================================
 // TYPOGRAPHY

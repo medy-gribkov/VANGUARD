@@ -77,6 +77,26 @@ size_t TargetTable::pruneStale(uint32_t now) {
     auto it = m_targets.begin();
     while (it != m_targets.end()) {
         if (it->isStale(now)) {
+            // When evicting an AP, check if any remaining STATION targets
+            // were tracked as clients of this AP. They become orphaned (no
+            // crash risk, just stale association data that will age out).
+            if (it->type == TargetType::ACCESS_POINT && it->hasClients()) {
+                size_t orphaned = 0;
+                for (const auto& other : m_targets) {
+                    if (&other == &(*it)) continue;
+                    if (other.type != TargetType::STATION) continue;
+                    if (it->hasClient(other.bssid)) {
+                        orphaned++;
+                    }
+                }
+                if (orphaned > 0 && Serial) {
+                    char bssidStr[18];
+                    it->formatBssid(bssidStr);
+                    Serial.printf("[TargetTable] Evicting AP %s, %u associated station(s) orphaned\n",
+                                  bssidStr, (unsigned)orphaned);
+                }
+            }
+
             if (m_onRemoved) {
                 m_onRemoved(*it);
             }
@@ -116,8 +136,18 @@ bool TargetTable::addVirtualTarget(const char* name, TargetType type) {
     newTarget.type = type;
     newTarget.rssi = -30; // "Strongest" signal for virtual targets
     newTarget.lastSeenMs = millis(); // Assuming millis() is available
-    // No bssid for virtual targets, or generate a unique one if needed
-    // For now, bssid will remain 0s from memset
+
+    // Generate unique synthetic BSSID to avoid collisions in findIndex().
+    // FF:FF prefix is in the locally-administered, multicast range so it
+    // will never collide with a real device MAC.
+    static uint32_t s_virtualCounter = 0;
+    uint32_t id = s_virtualCounter++;
+    newTarget.bssid[0] = 0xFF;
+    newTarget.bssid[1] = 0xFF;
+    newTarget.bssid[2] = (id >> 24) & 0xFF;
+    newTarget.bssid[3] = (id >> 16) & 0xFF;
+    newTarget.bssid[4] = (id >> 8)  & 0xFF;
+    newTarget.bssid[5] = id & 0xFF;
 
     m_targets.push_back(newTarget);
 

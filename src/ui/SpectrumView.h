@@ -31,9 +31,12 @@ public:
 
     // Navigation
     void handleInput(); // Consumes global input
+    bool wantsBack() const { return m_wantsBack; }
+    void clearBack() { m_wantsBack = false; }
 
 private:
     bool m_visible;
+    bool m_wantsBack;
     M5Canvas* m_canvas;
     
     // State

@@ -24,7 +24,30 @@
       "Bash(cmd /c \"C:\\\\Users\\\\User\\\\.platformio\\\\penv\\\\Scripts\\\\pio.exe run\")",
       "Bash(powershell -Command:*)",
       "Bash(~/.platformio/penv/Scripts/pio.exe run:*)",
-      "Bash(gh:*)"
+      "Bash(gh:*)",
+      "Bash(git -C /c/Users/User/Coding/Personal/VANGUARD diff --stat)",
+      "Bash(git -C /c/Users/User/Coding/Personal/VANGUARD diff src/main.cpp src/adapters/BruceBLE.cpp src/core/SystemTask.cpp)",
+      "Bash(git -C /c/Users/User/Coding/Personal/VANGUARD diff src/main.cpp)",
+      "Bash(/c/Users/User/.platformio/penv/Scripts/pio.exe test:*)",
+      "Bash(test:*)",
+      "Bash(/c/Users/User/Coding/Personal/VANGUARD/.gitignore:*)",
+      "Bash(/c/Users/User/.platformio/penv/Scripts/pio.exe device list)",
+      "Bash(/c/Users/User/.platformio/penv/Scripts/pio.exe device monitor:*)",
+      "Bash(pio pkg list:*)",
+      "Bash(export PATH=\"$PATH:/c/Users/User/.platformio/penv/Scripts\")",
+      "Bash(\"/c/Users/User/.platformio/penv/Scripts/pio.exe\" pkg list -d \"/c/Users/User/Coding/Personal/VANGUARD\")",
+      "Bash(done)",
+      "WebFetch(domain:docs.m5stack.com)",
+      "Bash(git -C /c/Users/User/Coding/Personal/VANGUARD diff --name-only)",
+      "Bash(pio test:*)",
+      "Bash(git -C /c/Users/User/Coding/Personal/VANGUARD status)",
+      "Bash(git -C /c/Users/User/Coding/Personal/VANGUARD log --oneline -5)",
+      "Bash(git -C /c/Users/User/Coding/Personal/VANGUARD ls-files src/ui/InputManager.h)",
+      "Bash(git -C /c/Users/User/Coding/Personal/VANGUARD diff --name-only --diff-filter=U)",
+      "Bash(git -C /c/Users/User/Coding/Personal/VANGUARD diff README.md)",
+      "Bash(git rebase:*)",
+      "Bash(GIT_EDITOR=true git rebase:*)",
+      "Bash(git -c core.editor=true rebase --continue)"
     ]
   }
 }

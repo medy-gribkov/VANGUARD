@@ -512,43 +512,6 @@ void TargetRadar::setAutoRefresh(bool enabled) {
 }
 
 // =============================================================================
-// LEGACY RENDERING (kept for compatibility but not used)
-// =============================================================================
-
-void TargetRadar::renderHeader() {
-    // Now done in render() directly to canvas
-}
-
-void TargetRadar::renderTargetList() {
-    // Now done in render() directly to canvas
-}
-
-void TargetRadar::renderTargetItem(const Target& target, int y, bool highlighted) {
-    // Delegate to canvas version
-    renderTargetItemToCanvas(target, y, highlighted);
-}
-
-void TargetRadar::renderEmptyState() {
-    // Now done in render() directly to canvas
-}
-
-void TargetRadar::renderScrollIndicator() {
-    // Now done in render() directly to canvas
-}
-
-void TargetRadar::drawSignalIndicator(int x, int y, int8_t rssi) {
-    // Now inlined in renderTargetItemToCanvas
-}
-
-void TargetRadar::drawSecurityBadge(int x, int y, SecurityType security) {
-    // Now inlined in renderTargetItemToCanvas
-}
-
-void TargetRadar::drawClientCount(int x, int y, uint8_t count) {
-    // Now inlined in renderTargetItemToCanvas
-}
-
-// =============================================================================
 // LIST MANAGEMENT
 // =============================================================================
 

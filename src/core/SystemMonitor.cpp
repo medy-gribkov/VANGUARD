@@ -43,15 +43,21 @@ void SystemMonitor::stop() {
 }
 
 SystemStatus SystemMonitor::getStatus() const {
-    // Refresh safe-to-read values on demand if task isn't running
     if (!m_running) {
+        // Refresh on demand if task isn't running
+        portENTER_CRITICAL(&m_statusMux);
         m_status.freeHeap = esp_get_free_heap_size();
         m_status.minFreeHeap = esp_get_minimum_free_heap_size();
         m_status.maxAllocHeap = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
         m_status.freePsram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
         m_status.uptime = millis() / 1000;
+        portEXIT_CRITICAL(&m_statusMux);
     }
-    return m_status;
+    // Copy under lock to avoid torn reads from Core 0 writer
+    portENTER_CRITICAL(&m_statusMux);
+    SystemStatus copy = m_status;
+    portEXIT_CRITICAL(&m_statusMux);
+    return copy;
 }
 
 void SystemMonitor::logStatus() {
@@ -66,12 +72,20 @@ void SystemMonitor::monitorTask(void* param) {
     SystemMonitor* self = (SystemMonitor*)param;
     
     while (self->m_running) {
-        // Update stats
-        self->m_status.freeHeap = esp_get_free_heap_size();
-        self->m_status.minFreeHeap = esp_get_minimum_free_heap_size();
-        self->m_status.maxAllocHeap = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
-        self->m_status.freePsram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
-        self->m_status.uptime = millis() / 1000;
+        // Gather stats outside lock, then write under lock
+        uint32_t freeHeap = esp_get_free_heap_size();
+        uint32_t minFree = esp_get_minimum_free_heap_size();
+        uint32_t maxAlloc = heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL);
+        uint32_t freePsram = heap_caps_get_free_size(MALLOC_CAP_SPIRAM);
+        uint32_t uptime = millis() / 1000;
+
+        portENTER_CRITICAL(&self->m_statusMux);
+        self->m_status.freeHeap = freeHeap;
+        self->m_status.minFreeHeap = minFree;
+        self->m_status.maxAllocHeap = maxAlloc;
+        self->m_status.freePsram = freePsram;
+        self->m_status.uptime = uptime;
+        portEXIT_CRITICAL(&self->m_statusMux);
 
         // Log if changes significant or periodical? 
         // For now, quiet background update. Can un-comment logging for debug.

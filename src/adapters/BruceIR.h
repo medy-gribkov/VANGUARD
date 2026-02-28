@@ -16,6 +16,7 @@ public:
     static BruceIR& getInstance();
 
     bool init();
+    void shutdown();
     void tick();
 
     // Transmission
@@ -34,6 +35,14 @@ private:
     bool m_initialized;
     bool m_recording;
     bool m_hasLastCapture;
+
+    // Stored capture data for replay (avoid IRData in header)
+    uint8_t m_lastProtocol;      // decode_type_t cast to uint8_t
+    uint16_t m_lastAddress;
+    uint16_t m_lastCommand;
+    uint8_t m_lastFlags;
+    uint16_t m_rawBuffer[256];   // Raw timing data backup
+    uint16_t m_rawLen;
 };
 
 } // namespace Vanguard

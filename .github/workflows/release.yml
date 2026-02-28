@@ -13,9 +13,9 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
-          python-version: '3.9'
+          python-version: '3.11'
 
       - name: Install PlatformIO
         run: |
@@ -23,12 +23,17 @@ jobs:
           pip install --upgrade platformio
 
       - name: Build Firmware
-        run: pio run
+        run: pio run -e m5stack-cardputer
+
+      - name: Run Unit Tests
+        run: pio test -e native --verbose
+        continue-on-error: true
 
       - name: Create Release
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: |
             .pio/build/m5stack-cardputer/firmware.bin
+            partitions_vanguard.csv
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

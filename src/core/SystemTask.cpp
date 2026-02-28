@@ -1,5 +1,6 @@
 #include "SystemTask.h"
 #include "RadioWarden.h"
+#include <esp_task_wdt.h>
 #include "../adapters/BruceWiFi.h"
 #include "../adapters/BruceBLE.h"
 #include "../adapters/BruceIR.h"
@@ -12,8 +13,8 @@ SystemTask& SystemTask::getInstance() {
     return instance;
 }
 
-SystemTask::SystemTask() : 
-    m_taskHandle(nullptr), 
+SystemTask::SystemTask() :
+    m_taskHandle(nullptr),
     m_running(false),
     m_actionActive(false),
     m_currentAction(ActionType::NONE),
@@ -23,28 +24,41 @@ SystemTask::SystemTask() :
     // Create Queues
     // Request Queue: UI -> System (Capacity 10)
     m_reqQueue = xQueueCreate(10, sizeof(SystemRequest));
-    
+
     // Event Queue: System -> UI (Capacity 20 - events can be bursty)
     m_evtQueue = xQueueCreate(20, sizeof(SystemEvent));
+
+    if (!m_reqQueue || !m_evtQueue) {
+        if (Serial) Serial.println("[System] FATAL: Queue creation failed");
+        return;
+    }
 }
 
 void SystemTask::start() {
     if (m_running) return;
-    
+
     // Start task on Core 0
-    // Stack size: 8192 bytes (WiFi/BLE stacks are heavy)
+    // Stack size: 16384 bytes (WiFi promiscuous + BLE NimBLE + IR need room)
     xTaskCreatePinnedToCore(
         taskLoop,
         "SystemTask",
-        8192,
+        16384,
         this,
         1,              // Priority 1 (Low-ish, let default tasks run)
         &m_taskHandle,
         0               // Core 0
     );
-    
+
     m_running = true;
     if (Serial) Serial.println("[System] Task started on Core 0");
+}
+
+void SystemTask::subscribeWatchdog() {
+    // Subscribe this task to the Task WDT so esp_task_wdt_reset() works.
+    // Without this, the Core 0 idle task (which IS subscribed) starves
+    // because our tight loop never yields long enough for it to run.
+    esp_task_wdt_add(NULL);  // NULL = current task
+    if (Serial) Serial.println("[System] Subscribed to Task WDT");
 }
 
 void SystemTask::taskLoop(void* param) {
@@ -53,8 +67,10 @@ void SystemTask::taskLoop(void* param) {
 }
 
 void SystemTask::run() {
+    subscribeWatchdog();
+
     SystemRequest req;
-    
+
     while (true) {
         // 1. Process Requests (Non-blocking check?)
         // Actually, we can block here for a short time to save CPU if idle
@@ -89,31 +105,31 @@ void SystemTask::run() {
              // Check for Action Completion logic
              bool completed = false;
              ActionResult result = ActionResult::SUCCESS;
-             const char* statusText = nullptr;
+             const char* statusMsg = nullptr;
 
              if (m_currentAction == ActionType::CAPTURE_HANDSHAKE) {
                  if (BruceWiFi::getInstance().hasHandshake()) {
                      completed = true;
                      result = ActionResult::SUCCESS;
-                     statusText = "Handshake Captured!";
+                     statusMsg = "Handshake Captured!";
                  } else if (now - m_actionStartTime > 60000) { // 60s timeout
                      completed = true;
                      result = ActionResult::FAILED_TIMEOUT;
-                     statusText = "Capture timed out";
+                     statusMsg = "Capture timed out";
                  }
              }
 
              if (completed) {
                  m_actionActive = false;
                  sendEvent(SysEventType::ACTION_COMPLETE, (void*)(intptr_t)result, 0, false);
-                 // Optional: Send one last progress event with the final statusText
                  ActionProgress* finalProg = new ActionProgress();
                  finalProg->type = m_currentAction;
                  finalProg->startTimeMs = m_actionStartTime;
                  finalProg->elapsedMs = now - m_actionStartTime;
                  finalProg->result = result;
                  finalProg->packetsSent = BruceWiFi::getInstance().getPacketsSent();
-                 finalProg->statusText = statusText;
+                 strncpy(finalProg->statusText, statusMsg ? statusMsg : "", sizeof(finalProg->statusText) - 1);
+                 finalProg->statusText[sizeof(finalProg->statusText) - 1] = '\0';
                  sendEvent(SysEventType::ACTION_PROGRESS, finalProg, sizeof(ActionProgress), true);
              } else if (now - m_lastProgressTime > 500) {
                   // Send progress update
@@ -121,32 +137,31 @@ void SystemTask::run() {
                   prog->type = m_currentAction;
                   prog->elapsedMs = now - m_actionStartTime;
                   prog->result = ActionResult::IN_PROGRESS;
-                  
+
                   // Get stats
                   uint32_t wifiPackets = BruceWiFi::getInstance().getPacketsSent();
                   uint32_t blePackets = BruceBLE::getInstance().getAdvertisementsSent();
                   prog->packetsSent = wifiPackets + blePackets;
-                  
-                  // Contextual status text
+
+                  // Contextual status text (safe copy into fixed buffer)
                   if (m_currentAction == ActionType::CAPTURE_HANDSHAKE) {
-                      prog->statusText = "Sniffing EAPOL...";
+                      strncpy(prog->statusText, "Sniffing EAPOL...", sizeof(prog->statusText) - 1);
                   } else if (m_currentAction == ActionType::EVIL_TWIN) {
-                      static char portalStatus[32];
-                      snprintf(portalStatus, sizeof(portalStatus), "Portal: %d clients", 
+                      snprintf(prog->statusText, sizeof(prog->statusText), "Portal: %d clients",
                                EvilPortal::getInstance().getClientCount());
-                      prog->statusText = portalStatus;
                   } else {
-                      prog->statusText = "Attacking...";
+                      strncpy(prog->statusText, "Attacking...", sizeof(prog->statusText) - 1);
                   }
-                  
+                  prog->statusText[sizeof(prog->statusText) - 1] = '\0';
+
                   prog->startTimeMs = m_actionStartTime;
                   sendEvent(SysEventType::ACTION_PROGRESS, prog, sizeof(ActionProgress), true);
                   m_lastProgressTime = now;
              }
         }
         
-        // Feed Watchdog for Core 0 (if enabled)
-        // esp_task_wdt_reset();
+        // Feed Watchdog for Core 0
+        esp_task_wdt_reset();
     }
 }
 
@@ -166,8 +181,28 @@ void SystemTask::sendEvent(SysEventType type, void* data, size_t len, bool isPtr
     evt.data = data;
     evt.dataLen = len;
     evt.isPointer = isPtr;
-    
-    xQueueSend(m_evtQueue, &evt, 0);
+
+    if (xQueueSend(m_evtQueue, &evt, 0) != pdTRUE) {
+        // Queue full. Clean up heap-allocated data to prevent leak.
+        // Type-safe delete based on event type.
+        if (isPtr && data) {
+            switch (type) {
+                case SysEventType::ACTION_PROGRESS:
+                    delete static_cast<ActionProgress*>(data);
+                    break;
+                case SysEventType::BLE_DEVICE_FOUND:
+                    delete static_cast<BLEDeviceInfo*>(data);
+                    break;
+                case SysEventType::ASSOCIATION_FOUND:
+                    delete static_cast<AssociationEvent*>(data);
+                    break;
+                default:
+                    delete static_cast<uint8_t*>(data);
+                    break;
+            }
+        }
+        if (Serial) Serial.println("[System] WARN: Event queue full, dropped event");
+    }
 }
 
 // =============================================================================
@@ -328,7 +363,27 @@ void SystemTask::handleActionStart(ActionRequest* req) {
                  success = ble.startSpam(BLESpamType::SOUR_APPLE);
              }
              break;
-             
+
+        case ActionType::IR_REPLAY:
+             {
+                 BruceIR& ir = BruceIR::getInstance();
+                 if (ir.init()) {
+                     ir.replayLast();
+                     success = true;
+                 }
+             }
+             break;
+
+        case ActionType::IR_TVBGONE:
+             {
+                 BruceIR& ir = BruceIR::getInstance();
+                 if (ir.init()) {
+                     ir.sendTVBGone();
+                     success = true;
+                 }
+             }
+             break;
+
         default:
             sendEvent(SysEventType::ERROR_OCCURRED, (void*)"Action not supported", 0, false);
             return;

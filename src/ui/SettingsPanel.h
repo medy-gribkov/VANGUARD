@@ -7,6 +7,7 @@
  */
 
 #include <M5Cardputer.h>
+#include <Preferences.h>
 #include "Theme.h"
 #include <vector>
 
@@ -85,8 +86,10 @@ private:
 
     void initSettings();
     void renderSetting(const Setting& setting, int y, bool highlighted);
+    void loadSettings();
+    void saveSetting(int index);
 };
 
 } // namespace Vanguard
 
-#endif // ASSESSOR_SETTINGS_PANEL_H
+#endif // VANGUARD_SETTINGS_PANEL_H

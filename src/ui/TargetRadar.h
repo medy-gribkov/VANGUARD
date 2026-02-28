@@ -39,7 +39,7 @@ class TargetRadar {
 public:
     /**
      * @brief Construct radar view
-     * @param engine Reference to the assessor engine for data
+     * @param engine Reference to the VANGUARD engine for data
      */
     explicit TargetRadar(VanguardEngine& engine);
     ~TargetRadar();
@@ -194,19 +194,9 @@ private:
     static constexpr uint32_t RENDER_INTERVAL_MS = 50;  // 20 FPS max
 
     // Rendering helpers
-    void renderHeader();
-    void renderTargetList();
-    void renderTargetItem(const Target& target, int y, bool highlighted);
     void renderTargetItemToCanvas(const Target& target, int y, bool highlighted);
-    void renderEmptyState();
-    void renderScrollIndicator();
-    void render5GHzWarning();  // Warning popup for 5GHz networks
-    void renderWidsAlert(const WidsAlertState& alert); // WIDS Overlay
-
-    // Item rendering details
-    void drawSignalIndicator(int x, int y, int8_t rssi);
-    void drawSecurityBadge(int x, int y, SecurityType security);
-    void drawClientCount(int x, int y, uint8_t count);
+    void render5GHzWarning();
+    void renderWidsAlert(const WidsAlertState& alert);
 
     // List management
     void updateTargetList();
@@ -215,4 +205,4 @@ private:
 
 } // namespace Vanguard
 
-#endif // ASSESSOR_TARGET_RADAR_H
+#endif // VANGUARD_TARGET_RADAR_H

@@ -490,7 +490,7 @@ void VanguardEngine::tickTransition() {
                     if (Serial) Serial.println("[Trans] BLE init SUCCESS");
                 } else if (m_bleInitAttempts >= 3) {
                     // Failed after 3 attempts, complete without BLE
-                    if (Serial) Serial.println("[Trans] BLE init FAILED, completing without BLE");
+                    if (Serial) Serial.println("[Trans] BLE init FAILED after 3 attempts - BLE unavailable");
                     m_scanState = ScanState::COMPLETE;
                     m_scanProgress = 100;
                     if (m_onScanProgress) {

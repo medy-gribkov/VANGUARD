@@ -163,12 +163,13 @@ bool BruceBLE::beginScan(uint32_t durationMs) {
     m_scanner->setInterval(100);
     m_scanner->setWindow(80);
 
-    // Let NimBLE manage duration internally (safer than manual timeout alone)
-    m_scanner->start(durationMs / 1000, false);
+    // Continuous scan (0 = no NimBLE timeout). tickScan handles timeout exclusively
+    // to avoid race between NimBLE's internal timer and our elapsed check.
+    m_scanner->start(0, false);
     m_state = BLEAdapterState::SCANNING;
 
     if (Serial) {
-        Serial.printf("[BLE] Scan started (%ums, %us NimBLE)\n", durationMs, durationMs / 1000);
+        Serial.printf("[BLE] Scan started (%ums, continuous NimBLE)\n", durationMs);
     }
 
     return true;

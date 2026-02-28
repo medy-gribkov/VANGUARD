@@ -7,8 +7,7 @@
  *
  * The BootSequence runs once at startup. It shows:
  * 1. Logo fade-in with tagline
- * 2. Brief "What is VANGUARD?" explainer (first run only)
- * 3. Transition to scanning state
+ * 2. Transition to scanning state
  *
  * @example
  * BootSequence boot;
@@ -32,7 +31,6 @@ enum class BootPhase : uint8_t {
     LOGO_FADE_IN,
     TAGLINE_FADE_IN,
     HOLD,
-    ONBOARDING,      // First-run only
     FADE_OUT,
     COMPLETE
 };
@@ -67,28 +65,16 @@ public:
      */
     BootPhase getPhase() const;
 
-    /**
-     * @brief Check if this is the first boot (show onboarding)
-     */
-    bool isFirstBoot() const;
-
-    /**
-     * @brief Mark onboarding as seen (won't show again)
-     */
-    void markOnboardingComplete();
-
 private:
     BootPhase m_phase;
     uint32_t  m_phaseStartMs;
     uint32_t  m_lastFrameMs;
-    bool      m_firstBoot;
     uint8_t   m_fadeLevel;       // 0-255 for animations
 
     // Phase durations (ms)
     static constexpr uint32_t LOGO_FADE_DURATION    = 300;
     static constexpr uint32_t TAGLINE_FADE_DURATION = 300;
     static constexpr uint32_t HOLD_DURATION         = 500;
-    static constexpr uint32_t ONBOARDING_DURATION   = 1000;
     static constexpr uint32_t FADE_OUT_DURATION     = 200;
 
     // Rendering helpers

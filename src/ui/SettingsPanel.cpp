@@ -7,6 +7,7 @@
 #include <Preferences.h>
 #include <M5Cardputer.h>
 #include "CanvasManager.h"
+#include "FeedbackManager.h"
 
 namespace Vanguard {
 
@@ -223,6 +224,10 @@ void SettingsPanel::select() {
             s.value = !s.value;
             m_needsRedraw = true;
             saveSetting(m_highlightIndex);
+            // Wire Sound Effects toggle to FeedbackManager
+            if (m_highlightIndex == 4) {
+                FeedbackManager::getInstance().setEnabled(s.value != 0);
+            }
         }
     }
 }
@@ -268,6 +273,12 @@ void SettingsPanel::loadSettings() {
     }
 
     prefs.end();
+
+    // Apply sound setting on load
+    if (m_settings.size() > 4) {
+        FeedbackManager::getInstance().setEnabled(m_settings[4].value != 0);
+    }
+
     if (Serial) Serial.println("[Settings] Loaded from NVS");
 }
 

@@ -104,6 +104,16 @@ void TargetRadar::render() {
     m_canvas->setTextColor(Theme::COLOR_ACCENT);
     m_canvas->drawString(countStr, Theme::SCREEN_WIDTH - 4, 3);
 
+    // Battery indicator
+    int batLevel = M5Cardputer.Power.getBatteryLevel();
+    if (batLevel >= 0) {
+        char batStr[8];
+        snprintf(batStr, sizeof(batStr), "%d%%", batLevel);
+        m_canvas->setTextDatum(TC_DATUM);
+        m_canvas->setTextColor(batLevel < 20 ? Theme::COLOR_DANGER : Theme::COLOR_TEXT_MUTED);
+        m_canvas->drawString(batStr, Theme::SCREEN_WIDTH / 2, 3);
+    }
+
     if (m_targets.empty()) {
         // Empty state
         int16_t centerX = Theme::SCREEN_WIDTH / 2;

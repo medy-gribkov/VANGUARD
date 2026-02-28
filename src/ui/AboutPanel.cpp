@@ -78,7 +78,7 @@ void AboutPanel::render() {
 
     // GitHub
     m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED);
-    m_canvas->drawString("github.com/spore-sec/VANGUARD", centerX, y);
+    m_canvas->drawString("github.com/Mahdy-gribkov/VANGUARD", centerX, y);
     y += 12;
 
     // License

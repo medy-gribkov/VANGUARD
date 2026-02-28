@@ -19,7 +19,8 @@ SystemTask::SystemTask() :
     m_actionActive(false),
     m_currentAction(ActionType::NONE),
     m_actionStartTime(0),
-    m_lastProgressTime(0)
+    m_lastProgressTime(0),
+    m_droppedEvents(0)
 {
     // Create Queues
     // Request Queue: UI -> System (Capacity 10)
@@ -53,6 +54,11 @@ void SystemTask::start() {
     if (Serial) Serial.println("[System] Task started on Core 0");
 }
 
+// WDT Architecture:
+// - Core 0 (this task): subscribed via esp_task_wdt_add(), feeds every loop iteration
+// - Core 1 (Arduino loop): feeds via esp_task_wdt_reset() in main loop()
+// - Default timeout: 5 seconds. If either core stalls, WDT triggers system reset.
+// - Stack: 16384 bytes. Monitor via uxTaskGetStackHighWaterMark() (see I4 check below).
 void SystemTask::subscribeWatchdog() {
     // Subscribe this task to the Task WDT so esp_task_wdt_reset() works.
     // Without this, the Core 0 idle task (which IS subscribed) starves
@@ -72,6 +78,8 @@ void SystemTask::run() {
     SystemRequest req;
 
     while (true) {
+        uint32_t now = millis();
+
         // 1. Process Requests (Non-blocking check?)
         // Actually, we can block here for a short time to save CPU if idle
         // But we also need to tick the adapters!
@@ -100,7 +108,6 @@ void SystemTask::run() {
         
         // 3. Monitor Status changes and emit events
         if (m_actionActive) {
-             uint32_t now = millis();
 
              bool completed = false;
              ActionResult result = ActionResult::SUCCESS;
@@ -155,10 +162,18 @@ void SystemTask::run() {
                       case ActionType::CAPTURE_HANDSHAKE:
                           strncpy(prog->statusText, "Sniffing EAPOL...", sizeof(prog->statusText) - 1);
                           break;
-                      case ActionType::EVIL_TWIN:
-                          snprintf(prog->statusText, sizeof(prog->statusText), "Portal: %d clients",
-                                   EvilPortal::getInstance().getClientCount());
+                      case ActionType::EVIL_TWIN: {
+                          EvilPortal& portal = EvilPortal::getInstance();
+                          int creds = portal.getCredentialCount();
+                          if (creds > 0) {
+                              snprintf(prog->statusText, sizeof(prog->statusText), "Portal: %d creds, %d clients",
+                                       creds, portal.getClientCount());
+                          } else {
+                              snprintf(prog->statusText, sizeof(prog->statusText), "Portal: %d clients",
+                                       portal.getClientCount());
+                          }
                           break;
+                      }
                       case ActionType::DEAUTH_ALL:
                       case ActionType::DEAUTH_SINGLE:
                           snprintf(prog->statusText, sizeof(prog->statusText), "Deauthing... %u sent", prog->packetsSent);
@@ -196,6 +211,16 @@ void SystemTask::run() {
         
         // Feed Watchdog for Core 0
         esp_task_wdt_reset();
+
+        // Periodic stack check (every 30s)
+        static uint32_t lastStackCheck = 0;
+        if (now - lastStackCheck > 30000) {
+            lastStackCheck = now;
+            UBaseType_t stackRemaining = uxTaskGetStackHighWaterMark(NULL);
+            if (stackRemaining < 1024) {
+                if (Serial) Serial.printf("[System] WARNING: Stack low! %u bytes remaining\n", stackRemaining);
+            }
+        }
     }
 }
 
@@ -235,7 +260,8 @@ void SystemTask::sendEvent(SysEventType type, void* data, size_t len, bool isPtr
                     break;
             }
         }
-        if (Serial) Serial.println("[System] WARN: Event queue full, dropped event");
+        m_droppedEvents++;
+        if (Serial) Serial.printf("[System] WARN: Event queue full (dropped %u total)\n", m_droppedEvents);
     }
 }
 
@@ -283,9 +309,15 @@ const char* SystemTask::getCompletionMessage(ActionType type, uint32_t packets, 
         case ActionType::MONITOR:
             snprintf(buf, sizeof(buf), "Captured %u packets", packets);
             break;
-        case ActionType::EVIL_TWIN:
-            snprintf(buf, sizeof(buf), "Portal served %u clients", packets);
+        case ActionType::EVIL_TWIN: {
+            int creds = EvilPortal::getInstance().getCredentialCount();
+            if (creds > 0) {
+                snprintf(buf, sizeof(buf), "Captured %d credentials", creds);
+            } else {
+                snprintf(buf, sizeof(buf), "Portal served %u clients", packets);
+            }
             break;
+        }
         case ActionType::CAPTURE_PMKID:
             snprintf(buf, sizeof(buf), "PMKID scan complete (%us)", secs);
             break;

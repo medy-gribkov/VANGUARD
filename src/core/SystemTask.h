@@ -74,6 +74,7 @@ private:
     uint32_t m_actionStartTime;
     uint32_t m_lastProgressTime;
     Target m_currentTarget;
+    uint32_t m_droppedEvents;
 };
 
 } // namespace Vanguard

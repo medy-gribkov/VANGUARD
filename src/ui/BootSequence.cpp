@@ -13,7 +13,6 @@ BootSequence::BootSequence()
     : m_phase(BootPhase::LOGO_FADE_IN)
     , m_phaseStartMs(0)
     , m_lastFrameMs(0)
-    , m_firstBoot(true)
     , m_fadeLevel(0)
 {
 }
@@ -97,14 +96,6 @@ BootPhase BootSequence::getPhase() const {
     return m_phase;
 }
 
-bool BootSequence::isFirstBoot() const {
-    return m_firstBoot;
-}
-
-void BootSequence::markOnboardingComplete() {
-    m_firstBoot = false;
-}
-
 // =============================================================================
 // RENDERING
 // =============================================================================
@@ -178,9 +169,6 @@ void BootSequence::advancePhase() {
             m_phase = BootPhase::HOLD;
             break;
         case BootPhase::HOLD:
-            m_phase = BootPhase::FADE_OUT;
-            break;
-        case BootPhase::ONBOARDING:
             m_phase = BootPhase::FADE_OUT;
             break;
         case BootPhase::FADE_OUT:

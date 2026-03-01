@@ -760,12 +760,8 @@ void BruceWiFi::promiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t type)
             if (!(srcMac[0] & 0x01)) {
                 // Extract probed SSID from the Tagged Parameters
                 // SSID IE starts at offset 24 (after fixed frame fields)
-                const char* probedSsid = "";
                 if (len > 26 && payload[24] == 0x00) { // Tag 0 = SSID
-                    uint8_t ssidLen = payload[25];
-                    if (ssidLen > 0 && ssidLen <= 32 && 26 + ssidLen <= len) {
-                        probedSsid = (const char*)&payload[26];
-                    }
+                    (void)payload[25]; // SSID length available for future use
                 }
                 // Forward as association event for TargetTable tracking
                 // Use the probing station as "client" with broadcast as "AP"

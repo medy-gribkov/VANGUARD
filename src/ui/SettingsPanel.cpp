@@ -262,7 +262,7 @@ void SettingsPanel::loadSettings() {
 
     // Settings keys match their index: s0, s1, s2, s3, s4
     for (size_t i = 0; i < m_settings.size(); i++) {
-        char key[4];
+        char key[8];
         snprintf(key, sizeof(key), "s%d", (int)i);
         if (prefs.isKey(key)) {
             m_settings[i].value = prefs.getInt(key, m_settings[i].value);
@@ -288,7 +288,7 @@ void SettingsPanel::saveSetting(int index) {
     Preferences prefs;
     if (!prefs.begin("vanguard", false)) return; // read-write
 
-    char key[4];
+    char key[16];
     snprintf(key, sizeof(key), "s%d", index);
     prefs.putInt(key, m_settings[index].value);
 

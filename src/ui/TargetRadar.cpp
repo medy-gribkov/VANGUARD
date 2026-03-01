@@ -107,7 +107,7 @@ void TargetRadar::render() {
     // Battery indicator
     int batLevel = M5Cardputer.Power.getBatteryLevel();
     if (batLevel >= 0) {
-        char batStr[8];
+        char batStr[12];
         snprintf(batStr, sizeof(batStr), "%d%%", batLevel);
         m_canvas->setTextDatum(TC_DATUM);
         m_canvas->setTextColor(batLevel < 20 ? Theme::COLOR_DANGER : Theme::COLOR_TEXT_MUTED);
@@ -202,10 +202,11 @@ void TargetRadar::renderScanning() {
     m_canvas->setTextDatum(TL_DATUM);
     m_canvas->drawString("SCANNING", 4, 3);
 
-    // Show progress percentage
+    // Show progress and elapsed time
     uint8_t progress = m_engine.getScanProgress();
-    char progStr[8];
-    snprintf(progStr, sizeof(progStr), "%d%%", progress);
+    uint32_t elapsedSec = m_engine.getScanElapsedMs() / 1000;
+    char progStr[16];
+    snprintf(progStr, sizeof(progStr), "%ds %d%%", elapsedSec, progress);
     m_canvas->setTextDatum(TR_DATUM);
     m_canvas->setTextColor(Theme::COLOR_ACCENT);
     m_canvas->drawString(progStr, Theme::SCREEN_WIDTH - 4, 3);

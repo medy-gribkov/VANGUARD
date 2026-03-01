@@ -11,6 +11,49 @@
 
 namespace Vanguard {
 
+// MAC OUI vendor lookup (first 3 bytes)
+static const char* lookupVendor(const uint8_t* mac) {
+    struct OuiEntry { uint8_t oui[3]; const char* name; };
+    static const OuiEntry table[] = {
+        {{0xAC, 0xDE, 0x48}, "Apple"},
+        {{0x3C, 0x06, 0x30}, "Apple"},
+        {{0xA4, 0x83, 0xE7}, "Apple"},
+        {{0x38, 0xF9, 0xD3}, "Apple"},
+        {{0xDC, 0xA6, 0x32}, "Apple"},
+        {{0xF0, 0x18, 0x98}, "Apple"},
+        {{0x8C, 0x85, 0x90}, "Apple"},
+        {{0xB8, 0x27, 0xEB}, "Raspberry Pi"},
+        {{0xDC, 0xA6, 0x32}, "Raspberry Pi"},
+        {{0x00, 0x50, 0xF2}, "Microsoft"},
+        {{0x30, 0x24, 0x32}, "Apple"},
+        {{0x5C, 0xE9, 0x1E}, "Samsung"},
+        {{0xCC, 0xB0, 0xDA}, "Samsung"},
+        {{0x78, 0x47, 0x1D}, "Samsung"},
+        {{0x00, 0x1A, 0x11}, "Google"},
+        {{0xF4, 0xF5, 0xD8}, "Google"},
+        {{0x54, 0x60, 0x09}, "Google"},
+        {{0x3C, 0x5A, 0xB4}, "Google"},
+        {{0x3C, 0xE8, 0x24}, "Intel"},
+        {{0xB4, 0x6B, 0xFC}, "Intel"},
+        {{0xF8, 0x63, 0x3F}, "Intel"},
+        {{0xE8, 0x6F, 0x38}, "TP-Link"},
+        {{0x50, 0xC7, 0xBF}, "TP-Link"},
+        {{0xA4, 0x2B, 0xB0}, "TP-Link"},
+        {{0x20, 0xA6, 0xCD}, "Xiaomi"},
+        {{0x64, 0xCC, 0x2E}, "Xiaomi"},
+        {{0x00, 0x17, 0x88}, "Philips"},
+        {{0xFC, 0xEC, 0xDA}, "Ubiquiti"},
+        {{0x24, 0xA4, 0x3C}, "Ubiquiti"},
+        {{0xB0, 0xBE, 0x76}, "TP-Link"},
+    };
+    for (const auto& entry : table) {
+        if (mac[0] == entry.oui[0] && mac[1] == entry.oui[1] && mac[2] == entry.oui[2]) {
+            return entry.name;
+        }
+    }
+    return nullptr;
+}
+
 TargetDetail::TargetDetail(VanguardEngine& engine, const Target& target)
     : m_engine(engine)
     , m_target(target)
@@ -42,7 +85,7 @@ TargetDetail::TargetDetail(VanguardEngine& engine, const Target& target)
     yield();  // Feed watchdog
 
     if (Serial) {
-        Serial.printf("[Detail] Created for target '%s' with %d actions, %d chains\n",
+        Serial.printf("[DETAIL] Created for target '%s' with %d actions, %d chains\n",
                       target.ssid, (int)m_actions.size(), (int)m_chains.size());
     }
 }
@@ -325,7 +368,7 @@ void TargetDetail::renderHeader() {
     m_canvas->drawString(ssidDisplay, 28, 3);
 
     // Signal strength on right
-    char rssiStr[8];
+    char rssiStr[12];
     snprintf(rssiStr, sizeof(rssiStr), "%d dBm", m_target.rssi);
     m_canvas->setTextDatum(TR_DATUM);
     m_canvas->setTextColor(Theme::getSignalColor(m_target.rssi));
@@ -335,10 +378,17 @@ void TargetDetail::renderHeader() {
 void TargetDetail::renderInfo() {
     int16_t y = Theme::HEADER_HEIGHT + 6;
 
-    // BSSID
+    // BSSID + vendor
     char bssidStr[18];
     m_target.formatBssid(bssidStr);
-    renderInfoField(y, "BSSID:", bssidStr);
+    const char* vendor = lookupVendor(m_target.bssid);
+    if (vendor) {
+        char bssidWithVendor[40];
+        snprintf(bssidWithVendor, sizeof(bssidWithVendor), "%s (%s)", bssidStr, vendor);
+        renderInfoField(y, "BSSID:", bssidWithVendor);
+    } else {
+        renderInfoField(y, "BSSID:", bssidStr);
+    }
     y += 12;
 
     // Channel with 5GHz warning
@@ -400,7 +450,7 @@ void TargetDetail::renderInfo() {
             
             // Show up to 3 client MACs
             for (int i = 0; i < m_target.clientCount && i < 3; i++) {
-                char macStr[20];
+                char macStr[24];
                 snprintf(macStr, sizeof(macStr), "#%d %02X:%02X:%02X:%02X:%02X:%02X",
                          i + 1,
                          m_target.clientMacs[i][0], m_target.clientMacs[i][1], m_target.clientMacs[i][2],

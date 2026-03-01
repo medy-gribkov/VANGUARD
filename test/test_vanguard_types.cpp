@@ -221,3 +221,118 @@ TEST_F(TargetTest, IsOpenFalseUnknown) {
     t.security = SecurityType::UNKNOWN;
     EXPECT_FALSE(t.isOpen());
 }
+
+// =============================================================================
+// Target Struct Edge Cases (T8)
+// =============================================================================
+
+TEST_F(TargetTest, EmptySSID) {
+    Target t;
+    memset(&t, 0, sizeof(t));
+    EXPECT_EQ(strlen(t.ssid), 0u);
+    EXPECT_EQ(t.ssid[0], '\0');
+}
+
+TEST_F(TargetTest, MaxLengthSSID) {
+    Target t;
+    memset(&t, 0, sizeof(t));
+
+    // Fill SSID to exactly SSID_MAX_LEN
+    for (size_t i = 0; i < SSID_MAX_LEN; i++) {
+        t.ssid[i] = 'A' + (char)(i % 26);
+    }
+    t.ssid[SSID_MAX_LEN] = '\0';
+
+    EXPECT_EQ(strlen(t.ssid), SSID_MAX_LEN);
+}
+
+TEST_F(TargetTest, RssiExtremeNegative) {
+    Target t = makeTarget();
+    t.rssi = -128; // int8_t minimum
+    EXPECT_EQ(t.getSignalStrength(), SignalStrength::POOR);
+    EXPECT_FALSE(t.rssi > RSSI_WEAK);
+}
+
+TEST_F(TargetTest, RssiZero) {
+    Target t = makeTarget();
+    t.rssi = 0;
+    EXPECT_EQ(t.getSignalStrength(), SignalStrength::EXCELLENT);
+}
+
+TEST_F(TargetTest, RssiPositive) {
+    Target t = makeTarget();
+    t.rssi = 127; // int8_t maximum (unusual but valid)
+    EXPECT_EQ(t.getSignalStrength(), SignalStrength::EXCELLENT);
+}
+
+TEST_F(TargetTest, MaxClientsOverflow) {
+    Target t = makeTarget();
+
+    // Fill to MAX_CLIENTS_PER_AP
+    for (uint8_t i = 0; i < MAX_CLIENTS_PER_AP; i++) {
+        uint8_t mac[6] = {0xCC, 0xCC, 0xCC, 0xCC, 0xCC, i};
+        t.addClientMac(mac);
+    }
+    EXPECT_EQ(t.clientCount, MAX_CLIENTS_PER_AP);
+
+    // Attempt overflow
+    uint8_t extra[6] = {0xDD, 0xDD, 0xDD, 0xDD, 0xDD, 0xFF};
+    EXPECT_FALSE(t.addClientMac(extra));
+    EXPECT_EQ(t.clientCount, MAX_CLIENTS_PER_AP);
+}
+
+TEST_F(TargetTest, AllSecurityTypes) {
+    Target t = makeTarget();
+
+    t.security = SecurityType::OPEN;
+    EXPECT_TRUE(t.isOpen());
+
+    t.security = SecurityType::WEP;
+    EXPECT_FALSE(t.isOpen());
+
+    t.security = SecurityType::WPA_PSK;
+    EXPECT_FALSE(t.isOpen());
+
+    t.security = SecurityType::WPA2_PSK;
+    EXPECT_FALSE(t.isOpen());
+
+    t.security = SecurityType::WPA2_ENTERPRISE;
+    EXPECT_FALSE(t.isOpen());
+
+    t.security = SecurityType::WPA3_SAE;
+    EXPECT_FALSE(t.isOpen());
+
+    t.security = SecurityType::UNKNOWN;
+    EXPECT_FALSE(t.isOpen());
+}
+
+TEST_F(TargetTest, AllTargetTypes) {
+    Target t = makeTarget();
+
+    // Verify all enum values compile and are distinct
+    t.type = TargetType::UNKNOWN;
+    t.type = TargetType::ACCESS_POINT;
+    t.type = TargetType::STATION;
+    t.type = TargetType::BLE_DEVICE;
+    t.type = TargetType::BLE_BEACON;
+    t.type = TargetType::BLE_SKIMMER;
+    t.type = TargetType::RF_DEVICE;
+    t.type = TargetType::IR_DEVICE;
+
+    EXPECT_NE(TargetType::ACCESS_POINT, TargetType::BLE_DEVICE);
+    EXPECT_NE(TargetType::STATION, TargetType::IR_DEVICE);
+}
+
+TEST_F(TargetTest, IsStaleWithOverflow) {
+    Target t = makeTarget();
+    // Test near uint32_t boundary
+    t.lastSeenMs = 0xFFFFFFFF - 100;
+
+    // (0 - (0xFFFFFFFF - 100)) wraps to 101 in uint32_t arithmetic
+    // 101 < TARGET_AGE_TIMEOUT (60000), so NOT stale
+    EXPECT_FALSE(t.isStale(0));
+
+    // But with large enough gap, it is stale
+    t.lastSeenMs = 0;
+    EXPECT_TRUE(t.isStale(TARGET_AGE_TIMEOUT + 1));
+}

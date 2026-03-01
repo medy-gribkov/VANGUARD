@@ -446,3 +446,87 @@ TEST_F(TargetTableTest, OnRemovedCallbackPrune) {
     table.pruneStale(TARGET_AGE_TIMEOUT + 100);
     EXPECT_EQ(callCount, 1);
 }
+
+// =============================================================================
+// MAX_TARGETS Boundary Stress Tests (T7)
+// =============================================================================
+
+TEST_F(TargetTableTest, ExactlyMaxTargets) {
+    for (size_t i = 0; i < MAX_TARGETS; i++) {
+        char ssid[8];
+        snprintf(ssid, sizeof(ssid), "Net%03u", (unsigned)i);
+        table.addOrUpdate(makeTarget((uint8_t)i, ssid, -50));
+    }
+    EXPECT_EQ(table.count(), MAX_TARGETS);
+}
+
+TEST_F(TargetTableTest, SixtyFifthTargetEvictsWeakest) {
+    // Fill with varying signal strengths
+    for (size_t i = 0; i < MAX_TARGETS; i++) {
+        char ssid[8];
+        snprintf(ssid, sizeof(ssid), "Net%03u", (unsigned)i);
+        int8_t rssi = (int8_t)(-90 + (int)(i % 20)); // -90 to -71
+        table.addOrUpdate(makeTarget((uint8_t)i, ssid, rssi));
+    }
+    EXPECT_EQ(table.count(), MAX_TARGETS);
+
+    // 65th target with strong signal should succeed
+    Target strong = makeTarget(0xFE, "Strong65", -20);
+    EXPECT_TRUE(table.addOrUpdate(strong));
+    EXPECT_EQ(table.count(), MAX_TARGETS);
+
+    uint8_t mac[6] = {0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFE};
+    EXPECT_NE(table.findByBssid(mac), nullptr);
+}
+
+TEST_F(TargetTableTest, SortStabilityAfterEviction) {
+    for (size_t i = 0; i < MAX_TARGETS; i++) {
+        char ssid[8];
+        snprintf(ssid, sizeof(ssid), "Net%03u", (unsigned)i);
+        table.addOrUpdate(makeTarget((uint8_t)i, ssid, -80));
+    }
+
+    // Evict by adding stronger
+    table.addOrUpdate(makeTarget(0xFE, "New", -30));
+
+    // Sort by signal should still work correctly
+    TargetFilter filter;
+    auto sorted = table.getFiltered(filter, SortOrder::SIGNAL_STRENGTH);
+    ASSERT_GT(sorted.size(), 1u);
+    EXPECT_STREQ(sorted[0].ssid, "New");
+    EXPECT_EQ(sorted[0].rssi, -30);
+}
+
+TEST_F(TargetTableTest, PruneAllStale) {
+    for (size_t i = 0; i < 10; i++) {
+        char ssid[8];
+        snprintf(ssid, sizeof(ssid), "Net%03u", (unsigned)i);
+        Target t = makeTarget((uint8_t)i, ssid, -50);
+        t.lastSeenMs = 1000;
+        table.addOrUpdate(t);
+    }
+    EXPECT_EQ(table.count(), 10u);
+
+    size_t removed = table.pruneStale(1000 + TARGET_AGE_TIMEOUT + 1);
+    EXPECT_EQ(removed, 10u);
+    EXPECT_EQ(table.count(), 0u);
+}
+
+TEST_F(TargetTableTest, FilterZeroMatches) {
+    table.addOrUpdate(makeTarget(0x01, "WiFiAP", -50, TargetType::ACCESS_POINT));
+    table.addOrUpdate(makeTarget(0x02, "BLEDev", -60, TargetType::BLE_DEVICE));
+
+    TargetFilter filter;
+    filter.showAccessPoints = false;
+    filter.showBLE = false;
+    filter.showStations = false;
+    auto result = table.getFiltered(filter);
+
+    EXPECT_EQ(result.size(), 0u);
+}
+
+TEST_F(TargetTableTest, AddVirtualTarget) {
+    EXPECT_TRUE(table.addVirtualTarget("Universal Remote", TargetType::IR_DEVICE));
+    EXPECT_EQ(table.count(), 1u);
+    EXPECT_EQ(table.countByType(TargetType::IR_DEVICE), 1u);
+}

@@ -335,3 +335,68 @@ TEST_F(ActionResolverTest, StoppedResultIsDifferentFromCancelled) {
     EXPECT_NE(ActionResult::STOPPED, ActionResult::CANCELLED);
     EXPECT_NE(ActionResult::STOPPED, ActionResult::SUCCESS);
 }
+
+// =============================================================================
+// Chain Validation Tests (T9) - verify chain steps are valid ActionTypes
+// =============================================================================
+
+TEST_F(ActionResolverTest, AllChainStepsAreValidActions) {
+    // Test with a target that gets all chains
+    Target ap = makeWiFiAP("TestNet", SecurityType::WPA2_PSK, 3);
+    auto chains = resolver.getChainsFor(ap);
+
+    ASSERT_GT(chains.size(), 0u);
+
+    for (const auto& chain : chains) {
+        EXPECT_GT(chain.stepCount, 0u) << "Chain '" << chain.name << "' has 0 steps";
+        EXPECT_LE(chain.stepCount, 4u) << "Chain '" << chain.name << "' exceeds max 4 steps";
+
+        for (uint8_t i = 0; i < chain.stepCount; i++) {
+            // Each step should be a valid, implemented action for this target
+            EXPECT_TRUE(resolver.isActionValid(ap, chain.steps[i]))
+                << "Chain '" << chain.name << "' step " << (int)i
+                << " is not valid for the target";
+        }
+    }
+}
+
+TEST_F(ActionResolverTest, ChainStepsNotRF) {
+    // No chain should reference unimplemented RF actions
+    Target ap = makeWiFiAP("TestNet", SecurityType::WPA2_PSK, 3);
+    auto chains = resolver.getChainsFor(ap);
+
+    for (const auto& chain : chains) {
+        for (uint8_t i = 0; i < chain.stepCount; i++) {
+            EXPECT_NE(chain.steps[i], ActionType::RF_REPLAY)
+                << "Chain '" << chain.name << "' references unimplemented RF_REPLAY";
+            EXPECT_NE(chain.steps[i], ActionType::RF_JAM)
+                << "Chain '" << chain.name << "' references unimplemented RF_JAM";
+        }
+    }
+}
+
+TEST_F(ActionResolverTest, ChainNamesNotNull) {
+    Target ap = makeWiFiAP("TestNet", SecurityType::WPA2_PSK, 3);
+    auto chains = resolver.getChainsFor(ap);
+
+    for (const auto& chain : chains) {
+        EXPECT_NE(chain.name, nullptr);
+        EXPECT_NE(chain.description, nullptr);
+        EXPECT_GT(strlen(chain.name), 0u);
+        EXPECT_GT(strlen(chain.description), 0u);
+    }
+}
+
+TEST_F(ActionResolverTest, NoClientsNoCaptureChainsButRecon) {
+    Target ap = makeWiFiAP("NoClients", SecurityType::WPA2_PSK, 0);
+    auto chains = resolver.getChainsFor(ap);
+
+    for (const auto& chain : chains) {
+        // Full Capture requires clients (deauth + handshake both need them)
+        EXPECT_STRNE(chain.name, "Full Capture")
+            << "Full Capture chain should not appear without clients";
+        // Disruption also requires clients (deauth step)
+        EXPECT_STRNE(chain.name, "Disruption")
+            << "Disruption chain should not appear without clients";
+    }
+}

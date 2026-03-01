@@ -304,6 +304,7 @@ bool BruceWiFi::deauthStation(const uint8_t* stationMac,
 
     stopHardwareActivities();
     esp_wifi_start();  // Ensure WiFi STA mode is active
+    setPromiscuous(true);  // Required for esp_wifi_80211_tx on ESP32-S3
     setChannel(channel);
 
     memcpy(m_attackTargetMac, stationMac, 6);
@@ -312,6 +313,7 @@ bool BruceWiFi::deauthStation(const uint8_t* stationMac,
     m_lastPacketMs = 0;
     m_state = WiFiAdapterState::DEAUTHING;
 
+    if (Serial) Serial.printf("[WiFi] Deauth started: ch%d promisc=%d\n", channel, m_promiscuousEnabled);
     return true;
 }
 
@@ -364,6 +366,7 @@ bool BruceWiFi::beaconFlood(const char** ssids, size_t count, uint8_t channel) {
 
     stopHardwareActivities();
     esp_wifi_start();  // Ensure WiFi STA mode is active
+    setPromiscuous(true);  // Required for esp_wifi_80211_tx on ESP32-S3
     setChannel(channel);
 
     m_beaconSsidCount = min(count, (size_t)MAX_BEACON_SSIDS);
@@ -569,6 +572,7 @@ bool BruceWiFi::startProbeFlood(uint8_t channel) {
 
     // Ensure WiFi STA mode is active (may have been stopped after recon)
     esp_wifi_start();
+    setPromiscuous(true);  // Required for esp_wifi_80211_tx on ESP32-S3
 
     setChannel(channel);
 
@@ -689,6 +693,9 @@ void BruceWiFi::onWidsAlert(WidsCallback cb) {
 
 bool BruceWiFi::sendRawFrame(const uint8_t* frame, size_t len) {
     esp_err_t result = esp_wifi_80211_tx(WIFI_IF_STA, frame, len, false);
+    if (result != ESP_OK && Serial) {
+        Serial.printf("[WiFi] 80211_tx err: %s\n", esp_err_to_name(result));
+    }
     return (result == ESP_OK);
 }
 
@@ -794,6 +801,15 @@ void BruceWiFi::promiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t type)
                     static const uint8_t broadcast[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
                     s_instance->m_onAssociation(srcMac, broadcast);
                 }
+            }
+        }
+
+        // Probe Response Detection (subtype 0x50) - AP responding to a specific client
+        if (subtype == 0x50 && len >= 24) {
+            const uint8_t* clientMac = &payload[4];   // Addr1 = Destination (client)
+            const uint8_t* apMac = &payload[10];      // Addr2 = Source (AP BSSID)
+            if (!(clientMac[0] & 0x01) && s_instance->m_onAssociation) {
+                s_instance->m_onAssociation(clientMac, apMac);
             }
         }
     }

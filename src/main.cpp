@@ -143,6 +143,10 @@ void setup() {
     FeedbackManager::getInstance().init();
     FeedbackManager::getInstance().beep(2000, 100); // Boot beep
 
+    // Subscribe Arduino loop task to WDT so esp_task_wdt_reset() in loop() works.
+    // Without this, Core 1 can hang forever without triggering a restart.
+    esp_task_wdt_add(NULL);
+
     // Safe serial print (only if CDC is connected)
     if (Serial) {
         Serial.println(F("[VANGUARD] Initialized. Entering loop."));
@@ -495,6 +499,15 @@ void handleKeyboardInput() {
 
     // Scan selector input (READY_TO_SCAN state)
     if (g_state == AppState::READY_TO_SCAN && g_scanSelector) {
+        // Back to RADAR if we have previous scan results
+        if (M5Cardputer.Keyboard.isKeyPressed('q') || M5Cardputer.Keyboard.isKeyPressed('Q') ||
+            M5Cardputer.Keyboard.isKeyPressed(KEY_BACKSPACE)) {
+            if (g_engine && g_engine->getTargetCount() > 0) {
+                g_scanSelector->hide();
+                setAppState(AppState::RADAR);
+            }
+            return;
+        }
         if (M5Cardputer.Keyboard.isKeyPressed('r') || M5Cardputer.Keyboard.isKeyPressed('R')) {
             g_scanSelector->onKeyR();
             return;
@@ -596,9 +609,10 @@ void handleKeyboardInput() {
         if (M5Cardputer.Keyboard.isKeyPressed(KEY_ENTER) || M5Cardputer.Keyboard.isKeyPressed('e')) {
             g_detail->select();
         }
-        // Back: Backspace, 'q', or ESC
+        // Back: Backspace, 'q', 'Q', or ESC
         if (M5Cardputer.Keyboard.isKeyPressed(KEY_BACKSPACE) ||
             M5Cardputer.Keyboard.isKeyPressed('q') ||
+            M5Cardputer.Keyboard.isKeyPressed('Q') ||
             M5Cardputer.Keyboard.isKeyPressed('`')) {
             g_detail->back();
         }
@@ -608,10 +622,10 @@ void handleKeyboardInput() {
     if (g_state == AppState::ATTACKING) {
         if (M5Cardputer.Keyboard.isKeyPressed(KEY_BACKSPACE) ||
             M5Cardputer.Keyboard.isKeyPressed('q') ||
+            M5Cardputer.Keyboard.isKeyPressed('Q') ||
             M5Cardputer.Keyboard.isKeyPressed('`')) {
             g_engine->stopAction();
             setAppState(AppState::TARGET_DETAIL);
-
         }
     }
 
@@ -668,6 +682,7 @@ void handleKeyboardInput() {
         // Back
         if (M5Cardputer.Keyboard.isKeyPressed(KEY_BACKSPACE) ||
             M5Cardputer.Keyboard.isKeyPressed('q') ||
+            M5Cardputer.Keyboard.isKeyPressed('Q') ||
             M5Cardputer.Keyboard.isKeyPressed('`')) {
             g_settings->hide();
             setAppState(g_previousState);

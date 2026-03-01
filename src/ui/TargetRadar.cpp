@@ -55,10 +55,11 @@ void TargetRadar::tick() {
         }
     }
 
-    // Update Geiger Counter based on currently highlighted target
-    if (m_highlightIndex >= 0 && m_highlightIndex < (int)m_targets.size()) {
-        FeedbackManager::getInstance().updateGeiger(m_targets[m_highlightIndex].rssi);
-    }
+    // Geiger counter disabled - constant clicking with strong nearby signals.
+    // TODO: Add user toggle in settings if desired.
+    // if (m_highlightIndex >= 0 && m_highlightIndex < (int)m_targets.size()) {
+    //     FeedbackManager::getInstance().updateGeiger(m_targets[m_highlightIndex].rssi);
+    // }
     
     // Check WIDS Alert
     const auto& alert = m_engine.getWidsAlert();

@@ -271,7 +271,8 @@ private:
     ActionProgressCallback m_onActionProgress;
 
     // Timing
-    uint32_t m_scanStartMs;
+    uint32_t m_scanStartMs;       // Total scan start (for elapsed timer display)
+    uint32_t m_bleScanStartMs;    // BLE phase start (for BLE progress interpolation)
 
     // BLE transition state machine (non-blocking)
     uint8_t  m_transitionStep;     // Current step in WiFi→BLE transition

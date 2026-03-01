@@ -164,14 +164,23 @@ bool BruceBLE::beginScan(uint32_t durationMs) {
     m_scanStartMs = millis();
     m_scanDurationMs = durationMs;
 
-    // Configure scan timing to control heap usage
-    m_scanner->setActiveScan(true);
+    // Passive scan: only listens for advertisements, no probe requests.
+    // Active scan floods the radio with probe responses - unnecessary for BLE discovery.
+    m_scanner->setActiveScan(false);
     m_scanner->setInterval(100);
-    m_scanner->setWindow(80);
+    m_scanner->setWindow(50);   // 50% duty cycle - gives Core 0 breathing room for WDT
+    // Report each unique device once (not every advertisement packet).
+    // Without this, hundreds of duplicate callbacks/sec starve SystemTask on Core 0,
+    // causing WDT reset. We lose real-time RSSI updates but initial RSSI is sufficient.
+    m_scanner->setDuplicateFilter(true);
+    m_scanner->setMaxResults(0);  // Don't store in NimBLE (we use our own vector)
 
-    // Continuous scan (0 = no NimBLE timeout). tickScan handles timeout exclusively
-    // to avoid race between NimBLE's internal timer and our elapsed check.
-    m_scanner->start(0, false);
+    // Use NimBLE's built-in duration (in seconds) instead of continuous scan.
+    // Continuous scan (duration=0) caused WDT crashes during NimBLE teardown when
+    // tickScan() called m_scanner->stop(). With built-in duration, NimBLE handles
+    // cleanup gracefully via its own timer.
+    uint32_t durationSec = (durationMs + 999) / 1000;  // Round up to seconds
+    m_scanner->start(durationSec, false);
     m_state = BLEAdapterState::SCANNING;
 
     if (Serial) {
@@ -186,6 +195,8 @@ void BruceBLE::stopScan() {
         // Force stop scanner
         if (m_scanner) {
             m_scanner->stop();
+            // Give NimBLE host task time to finish cleanup (prevents WDT during teardown)
+            for (int i = 0; i < 10; i++) { yield(); delay(10); }
         }
 
         // Always transition state immediately
@@ -245,20 +256,20 @@ void BruceBLE::tickScan() {
 
     yield();  // Feed watchdog during scan
 
-    // Check for timeout
+    // Safety timeout: NimBLE manages its own duration, but if it hasn't stopped
+    // after duration + 2s buffer, force stop to prevent hanging forever.
     uint32_t elapsed = millis() - m_scanStartMs;
-    if (m_scanDurationMs > 0 && elapsed >= m_scanDurationMs) {
-        // Force stop the scanner - NimBLE doesn't always fire completion callback
+    if (m_scanDurationMs > 0 && elapsed >= m_scanDurationMs + 2000) {
         m_scanner->stop();
+        // Give NimBLE host task time to finish cleanup (prevents WDT during teardown)
+        for (int i = 0; i < 10; i++) { yield(); delay(10); }
 
-        // Force state transition regardless of scanner response
         m_state = BLEAdapterState::IDLE;
 
         if (Serial) {
-            Serial.printf("[BLE] Scan timeout after %ums: %d devices\n", elapsed, m_devices.size());
+            Serial.printf("[BLE] Safety timeout after %ums: %d devices\n", elapsed, m_devices.size());
         }
 
-        // Fire completion callback
         if (m_onScanComplete) {
             m_onScanComplete(m_devices.size());
         }
@@ -338,8 +349,9 @@ void BruceBLE::ScanCallbacks::onResult(NimBLEAdvertisedDevice* device) {
 // =============================================================================
 
 bool BruceBLE::startSpam(BLESpamType type) {
-    if (!m_initialized) {
-        if (!init()) return false;
+    if (!m_enabled && !onEnable()) {
+        if (Serial) Serial.println("[BLE] startSpam failed: RadioWarden denied BLE access");
+        return false;
     }
 
     stopHardwareActivities();
@@ -551,8 +563,9 @@ bool BruceBLE::spoofBeacon(const char* name,
                             const char* uuid,
                             uint16_t major,
                             uint16_t minor) {
-    if (!m_initialized) {
-        if (!init()) return false;
+    if (!m_enabled && !onEnable()) {
+        if (Serial) Serial.println("[BLE] spoofBeacon failed: RadioWarden denied BLE access");
+        return false;
     }
 
     stopHardwareActivities();

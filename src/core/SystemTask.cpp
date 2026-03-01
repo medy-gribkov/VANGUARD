@@ -49,7 +49,7 @@ void SystemTask::start() {
         "SystemTask",
         16384,
         this,
-        1,              // Priority 1 (Low-ish, let default tasks run)
+        5,              // Priority 5 (high enough to run between NimBLE callback bursts)
         &m_taskHandle,
         0               // Core 0
     );
@@ -156,9 +156,9 @@ void SystemTask::run() {
                      (int)result, BruceWiFi::getInstance().getPacketsSent() + BruceBLE::getInstance().getAdvertisementsSent(),
                      now - m_actionStartTime, now, m_actionStartTime);
 
-                 // Stop hardware
-                 BruceWiFi::getInstance().stopHardwareActivities();
-                 BruceBLE::getInstance().stopHardwareActivities();
+                 // Stop hardware and release radio for clean state
+                 BruceWiFi::getInstance().onDisable();
+                 BruceBLE::getInstance().onDisable();
 
                  m_actionActive = false;
                  sendEvent(SysEventType::ACTION_COMPLETE, (void*)(intptr_t)result, 0, false);
@@ -249,8 +249,8 @@ void SystemTask::run() {
              }
         }
         
-        // 4. Recon auto-complete after 2 seconds per channel
-        if (m_reconActive && (now - m_reconStartTime > 2000)) {
+        // 4. Recon auto-complete after 4 seconds per channel
+        if (m_reconActive && (now - m_reconStartTime > 4000)) {
             BruceWiFi::getInstance().stopHardwareActivities();
             m_reconActive = false;
             sendEvent(SysEventType::RECON_DONE, nullptr, 0, false);
@@ -598,9 +598,9 @@ bool SystemTask::startWiFiAction(ActionType type, Target& t, ActionRequest* req)
 
 bool SystemTask::startBLEAction(ActionType type) {
     BruceBLE& ble = BruceBLE::getInstance();
-    if (!ble.init()) {
-        if (Serial) Serial.println("[SYSTEM] BLE init FAILED");
-        m_lastError = "BLE init failed";
+    if (!ble.onEnable()) {
+        if (Serial) Serial.println("[SYSTEM] BLE enable FAILED (radio unavailable)");
+        m_lastError = "BLE radio unavailable";
         return false;
     }
 
@@ -669,8 +669,8 @@ bool SystemTask::startPortalAction(Target& t) {
 }
 
 void SystemTask::handleActionStop() {
-    BruceWiFi::getInstance().stopHardwareActivities();
-    BruceBLE::getInstance().stopHardwareActivities();
+    BruceWiFi::getInstance().onDisable();   // Stop + release radio
+    BruceBLE::getInstance().onDisable();    // Stop + release radio
     m_actionActive = false;
     sendEvent(SysEventType::ACTION_COMPLETE, (void*)(intptr_t)ActionResult::STOPPED, 0, false);
 }
@@ -681,6 +681,11 @@ void SystemTask::handleActionStop() {
 
 void SystemTask::handleReconChannel(uint32_t channel) {
     if (Serial) Serial.printf("[SYSTEM] Recon on channel %u\n", channel);
+
+    // Ensure BLE is fully stopped and radio released before WiFi recon.
+    // After combined scan BLE phase, NimBLE host task may still be cleaning up.
+    BruceBLE::getInstance().onDisable();
+    vTaskDelay(pdMS_TO_TICKS(50));  // Let radio settle after BLE shutdown
 
     BruceWiFi& wifi = BruceWiFi::getInstance();
     if (!wifi.init()) {

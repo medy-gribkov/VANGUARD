@@ -61,6 +61,12 @@ private:
     void handleBleScanStop();
     void handleActionStart(ActionRequest* req);
     void handleActionStop();
+
+    // Per-protocol action starters (extracted from handleActionStart)
+    bool startWiFiAction(ActionType type, Target& target, ActionRequest* req);
+    bool startBLEAction(ActionType type);
+    void startIRAction(ActionType type);
+    bool startPortalAction(Target& target);
     
     // Helpers
     void sendEvent(SysEventType type, void* data = nullptr, size_t len = 0, bool isPtr = false);

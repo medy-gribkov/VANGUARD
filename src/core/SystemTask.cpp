@@ -30,7 +30,7 @@ SystemTask::SystemTask() :
     m_evtQueue = xQueueCreate(40, sizeof(SystemEvent));
 
     if (!m_reqQueue || !m_evtQueue) {
-        if (Serial) Serial.println("[System] FATAL: Queue creation failed");
+        if (Serial) Serial.println("[SYSTEM] FATAL: Queue creation failed");
         return;
     }
 }
@@ -51,7 +51,7 @@ void SystemTask::start() {
     );
 
     m_running = true;
-    if (Serial) Serial.println("[System] Task started on Core 0");
+    if (Serial) Serial.println("[SYSTEM] Task started on Core 0");
 }
 
 // WDT Architecture:
@@ -64,7 +64,7 @@ void SystemTask::subscribeWatchdog() {
     // Without this, the Core 0 idle task (which IS subscribed) starves
     // because our tight loop never yields long enough for it to run.
     esp_task_wdt_add(NULL);  // NULL = current task
-    if (Serial) Serial.println("[System] Subscribed to Task WDT");
+    if (Serial) Serial.println("[SYSTEM] Subscribed to Task WDT");
 }
 
 void SystemTask::taskLoop(void* param) {
@@ -139,7 +139,7 @@ void SystemTask::run() {
                  m_actionActive = false;
                  sendEvent(SysEventType::ACTION_COMPLETE, (void*)(intptr_t)result, 0, false);
                  ActionProgress* finalProg = new ActionProgress();
-                 if (!finalProg) { Serial.println("[System] ERR: Heap allocation failed"); break; }
+                 if (!finalProg) { Serial.println("[SYSTEM] ERR: Heap allocation failed"); break; }
                  finalProg->type = m_currentAction;
                  finalProg->startTimeMs = m_actionStartTime;
                  finalProg->elapsedMs = now - m_actionStartTime;
@@ -150,7 +150,7 @@ void SystemTask::run() {
                  sendEvent(SysEventType::ACTION_PROGRESS, finalProg, sizeof(ActionProgress), true);
              } else if (now - m_lastProgressTime > 500) {
                   ActionProgress* prog = new ActionProgress();
-                  if (!prog) { Serial.println("[System] ERR: Heap allocation failed"); break; }
+                  if (!prog) { Serial.println("[SYSTEM] ERR: Heap allocation failed"); break; }
                   prog->type = m_currentAction;
                   prog->elapsedMs = now - m_actionStartTime;
                   prog->result = ActionResult::IN_PROGRESS;
@@ -168,7 +168,7 @@ void SystemTask::run() {
                           EvilPortal& portal = EvilPortal::getInstance();
                           int creds = portal.getCredentialCount();
                           if (creds > 0) {
-                              snprintf(prog->statusText, sizeof(prog->statusText), "Portal: %d creds, %d clients",
+                              snprintf(prog->statusText, sizeof(prog->statusText), "Portal: %dc %dcli",
                                        creds, portal.getClientCount());
                           } else {
                               snprintf(prog->statusText, sizeof(prog->statusText), "Portal: %d clients",
@@ -220,7 +220,7 @@ void SystemTask::run() {
             lastStackCheck = now;
             UBaseType_t stackRemaining = uxTaskGetStackHighWaterMark(NULL);
             if (stackRemaining < 1024) {
-                if (Serial) Serial.printf("[System] WARNING: Stack low! %u bytes remaining\n", stackRemaining);
+                if (Serial) Serial.printf("[SYSTEM] WARNING: Stack low! %u bytes remaining\n", stackRemaining);
             }
         }
     }
@@ -263,7 +263,7 @@ void SystemTask::sendEvent(SysEventType type, void* data, size_t len, bool isPtr
             }
         }
         m_droppedEvents++;
-        if (Serial) Serial.printf("[System] WARN: Event queue full (dropped %u total)\n", m_droppedEvents);
+        if (Serial) Serial.printf("[SYSTEM] WARN: Event queue full (dropped %u total)\n", m_droppedEvents);
     }
 }
 
@@ -369,7 +369,7 @@ void SystemTask::handleRequest(const SystemRequest& req) {
 }
 
 void SystemTask::handleWiFiScanStart() {
-    if (Serial) Serial.println("[System] Starting WiFi Scan...");
+    if (Serial) Serial.println("[SYSTEM] Starting WiFi scan");
     
     // Wire up callback to send event back to UI
     BruceWiFi::getInstance().onScanComplete([this](int count) {
@@ -393,11 +393,11 @@ void SystemTask::handleWiFiScanStop() {
 }
 
 void SystemTask::handleBleScanStart(uint32_t duration) {
-    if (Serial) Serial.printf("[System] Starting BLE Scan (%ums)...\n", duration);
+    if (Serial) Serial.printf("[SYSTEM] Starting BLE scan (%ums)\n", duration);
     
     BruceBLE::getInstance().onDeviceFound([this](const BLEDeviceInfo& device) {
         BLEDeviceInfo* copy = new BLEDeviceInfo(device);
-        if (!copy) { Serial.println("[System] ERR: Heap allocation failed"); return; }
+        if (!copy) { Serial.println("[SYSTEM] ERR: Heap allocation failed"); return; }
         sendEvent(SysEventType::BLE_DEVICE_FOUND, copy, sizeof(BLEDeviceInfo), true);
     });
     
@@ -415,168 +415,151 @@ void SystemTask::handleBleScanStop() {
 
 void SystemTask::handleActionStart(ActionRequest* req) {
     if (!req) return;
-    
+
     ActionType type = req->type;
     Target& t = req->target;
-    
-    if (Serial) Serial.printf("[System] Action Start: %d\n", (int)type);
-    
-    BruceWiFi& wifi = BruceWiFi::getInstance();
-    BruceBLE& ble = BruceBLE::getInstance();
-    
+
+    if (Serial) Serial.printf("[SYSTEM] Action start: %d\n", (int)type);
+
+    // IR actions complete instantly, skip m_actionActive
+    if (type == ActionType::IR_REPLAY || type == ActionType::IR_TVBGONE) {
+        startIRAction(type);
+        return;
+    }
+
     bool success = false;
-    
+
     switch (type) {
         case ActionType::DEAUTH_SINGLE:
-             if (wifi.init()) {
-                 // Check if stationMac is valid (not all zeros)
-                 bool specificClient = false;
-                 for (int i=0; i<6; i++) if (req->stationMac[i] != 0) specificClient = true;
-                 
-                 if (specificClient) {
-                     success = wifi.deauthStation(req->stationMac, t.bssid, t.channel);
-                 } else {
-                     // Fallback to all if no client specified
-                     success = wifi.deauthAll(t.bssid, t.channel);
-                 }
-             }
-             break;
-
         case ActionType::DEAUTH_ALL:
-             if (wifi.init()) {
-                 success = wifi.deauthAll(t.bssid, t.channel);
-             }
-             break;
-
-        // ... Beacon/BLE existing ...
-
         case ActionType::CAPTURE_HANDSHAKE:
-             if (wifi.init()) {
-                 // 1. Start Capture (BruceWiFi handles PCAP internally if captureHandshake is called)
-                 // But we want to ensure it's logged to our specific filename
-                 char filename[64];
-                 snprintf(filename, sizeof(filename), "/captures/hs_%02X%02X%02X.pcap", 
-                          t.bssid[3], t.bssid[4], t.bssid[5]);
-                 wifi.setPcapLogging(true, filename);
-                 
-                 success = wifi.captureHandshake(t.bssid, t.channel, true);
-             }
-             break;
+        case ActionType::CAPTURE_PMKID:
+        case ActionType::BEACON_FLOOD:
+        case ActionType::PROBE_FLOOD:
+        case ActionType::MONITOR:
+            success = startWiFiAction(type, t, req);
+            break;
+
+        case ActionType::BLE_SPAM:
+        case ActionType::BLE_SOUR_APPLE:
+        case ActionType::BLE_SKIMMER_DETECT:
+            success = startBLEAction(type);
+            break;
 
         case ActionType::EVIL_TWIN:
-             {
-                 EvilPortal& portal = EvilPortal::getInstance();
-                 if (portal.isRunning()) portal.stop();
-                 success = portal.start(t.ssid, t.channel, PortalTemplate::GENERIC_WIFI);
-             }
-             break;
-
-        case ActionType::BEACON_FLOOD:
-             if (wifi.init()) {
-                 static const char* fakeSSIDs[] = {
-                    "Free WiFi", "xfinity", "ATT-WiFi", "NETGEAR",
-                    "linksys", "FBI Van", "Virus.exe", "GetYourOwn"
-                 };
-                 success = wifi.beaconFlood(fakeSSIDs, 8, t.channel);
-             }
-             break;
-             
-        case ActionType::BLE_SPAM:
-             if (ble.init()) {
-                 success = ble.startSpam(BLESpamType::RANDOM);
-             }
-             break;
-             
-        case ActionType::BLE_SOUR_APPLE:
-             if (ble.init()) {
-                 success = ble.startSpam(BLESpamType::SOUR_APPLE);
-             }
-             break;
-
-        case ActionType::IR_REPLAY:
-             {
-                 BruceIR& ir = BruceIR::getInstance();
-                 if (ir.init()) {
-                     ir.replayLast();
-                     // Instant complete - IR fires and is done
-                     sendEvent(SysEventType::ACTION_COMPLETE, (void*)(intptr_t)ActionResult::SUCCESS, 0, false);
-                     ActionProgress* prog = new ActionProgress();
-                     prog->type = ActionType::IR_REPLAY;
-                     prog->result = ActionResult::SUCCESS;
-                     prog->elapsedMs = 0;
-                     prog->packetsSent = 1;
-                     strncpy(prog->statusText, "IR signal sent", sizeof(prog->statusText) - 1);
-                     prog->statusText[sizeof(prog->statusText) - 1] = '\0';
-                     sendEvent(SysEventType::ACTION_PROGRESS, prog, sizeof(ActionProgress), true);
-                     return; // Skip m_actionActive = true
-                 }
-             }
-             break;
-
-        case ActionType::IR_TVBGONE:
-             {
-                 BruceIR& ir = BruceIR::getInstance();
-                 if (ir.init()) {
-                     ir.sendTVBGone();
-                     sendEvent(SysEventType::ACTION_COMPLETE, (void*)(intptr_t)ActionResult::SUCCESS, 0, false);
-                     ActionProgress* prog = new ActionProgress();
-                     prog->type = ActionType::IR_TVBGONE;
-                     prog->result = ActionResult::SUCCESS;
-                     prog->elapsedMs = 0;
-                     prog->packetsSent = 1;
-                     strncpy(prog->statusText, "TV-B-Gone complete", sizeof(prog->statusText) - 1);
-                     prog->statusText[sizeof(prog->statusText) - 1] = '\0';
-                     sendEvent(SysEventType::ACTION_PROGRESS, prog, sizeof(ActionProgress), true);
-                     return;
-                 }
-             }
-             break;
-
-        case ActionType::PROBE_FLOOD:
-             if (wifi.init()) {
-                 success = wifi.startProbeFlood(t.channel);
-             }
-             break;
-
-        case ActionType::MONITOR:
-             if (wifi.init()) {
-                 success = wifi.startMonitor(t.channel);
-             }
-             break;
-
-        case ActionType::CAPTURE_PMKID:
-             if (wifi.init()) {
-                 char filename[64];
-                 snprintf(filename, sizeof(filename), "/captures/pmkid_%02X%02X%02X.pcap",
-                          t.bssid[3], t.bssid[4], t.bssid[5]);
-                 wifi.setPcapLogging(true, filename);
-                 success = wifi.captureHandshake(t.bssid, t.channel, false); // false = don't send deauths
-             }
-             break;
-
-        case ActionType::BLE_SKIMMER_DETECT:
-             if (ble.init()) {
-                 // Run a quick scan, then check for skimmers
-                 ble.beginScan(5000);
-                 success = true; // Detection happens during scan via isLikelySkimmer()
-             }
-             break;
+            success = startPortalAction(t);
+            break;
 
         default:
             sendEvent(SysEventType::ERROR_OCCURRED, (void*)"Action not supported", 0, false);
             return;
     }
-    
+
     if (success) {
         m_actionActive = true;
         m_currentAction = type;
         m_actionStartTime = millis();
         m_lastProgressTime = millis();
-        // Send initial progress or started event?
     } else {
         m_actionActive = false;
         sendEvent(SysEventType::ERROR_OCCURRED, (void*)"Hardware init failed", 0, false);
     }
+}
+
+bool SystemTask::startWiFiAction(ActionType type, Target& t, ActionRequest* req) {
+    BruceWiFi& wifi = BruceWiFi::getInstance();
+    if (!wifi.init()) return false;
+
+    switch (type) {
+        case ActionType::DEAUTH_SINGLE: {
+            bool specificClient = false;
+            for (int i = 0; i < 6; i++) {
+                if (req->stationMac[i] != 0) { specificClient = true; break; }
+            }
+            return specificClient
+                ? wifi.deauthStation(req->stationMac, t.bssid, t.channel)
+                : wifi.deauthAll(t.bssid, t.channel);
+        }
+        case ActionType::DEAUTH_ALL:
+            return wifi.deauthAll(t.bssid, t.channel);
+
+        case ActionType::CAPTURE_HANDSHAKE: {
+            char filename[64];
+            snprintf(filename, sizeof(filename), "/captures/hs_%02X%02X%02X.pcap",
+                     t.bssid[3], t.bssid[4], t.bssid[5]);
+            wifi.setPcapLogging(true, filename);
+            return wifi.captureHandshake(t.bssid, t.channel, true);
+        }
+        case ActionType::CAPTURE_PMKID: {
+            char filename[64];
+            snprintf(filename, sizeof(filename), "/captures/pmkid_%02X%02X%02X.pcap",
+                     t.bssid[3], t.bssid[4], t.bssid[5]);
+            wifi.setPcapLogging(true, filename);
+            return wifi.captureHandshake(t.bssid, t.channel, false);
+        }
+        case ActionType::BEACON_FLOOD: {
+            static const char* fakeSSIDs[] = {
+                "Free WiFi", "xfinity", "ATT-WiFi", "NETGEAR",
+                "linksys", "FBI Van", "Virus.exe", "GetYourOwn"
+            };
+            return wifi.beaconFlood(fakeSSIDs, 8, t.channel);
+        }
+        case ActionType::PROBE_FLOOD:
+            return wifi.startProbeFlood(t.channel);
+
+        case ActionType::MONITOR:
+            return wifi.startMonitor(t.channel);
+
+        default:
+            return false;
+    }
+}
+
+bool SystemTask::startBLEAction(ActionType type) {
+    BruceBLE& ble = BruceBLE::getInstance();
+    if (!ble.init()) return false;
+
+    switch (type) {
+        case ActionType::BLE_SPAM:
+            return ble.startSpam(BLESpamType::RANDOM);
+        case ActionType::BLE_SOUR_APPLE:
+            return ble.startSpam(BLESpamType::SOUR_APPLE);
+        case ActionType::BLE_SKIMMER_DETECT:
+            ble.beginScan(5000);
+            return true;
+        default:
+            return false;
+    }
+}
+
+void SystemTask::startIRAction(ActionType type) {
+    BruceIR& ir = BruceIR::getInstance();
+    if (!ir.init()) return;
+
+    if (type == ActionType::IR_REPLAY) {
+        ir.replayLast();
+    } else {
+        ir.sendTVBGone();
+    }
+
+    const char* msg = (type == ActionType::IR_REPLAY) ? "IR signal sent" : "TV-B-Gone complete";
+
+    sendEvent(SysEventType::ACTION_COMPLETE, (void*)(intptr_t)ActionResult::SUCCESS, 0, false);
+    ActionProgress* prog = new ActionProgress();
+    if (!prog) { Serial.println("[SYSTEM] ERR: Heap allocation failed"); return; }
+    prog->type = type;
+    prog->result = ActionResult::SUCCESS;
+    prog->elapsedMs = 0;
+    prog->packetsSent = 1;
+    strncpy(prog->statusText, msg, sizeof(prog->statusText) - 1);
+    prog->statusText[sizeof(prog->statusText) - 1] = '\0';
+    sendEvent(SysEventType::ACTION_PROGRESS, prog, sizeof(ActionProgress), true);
+}
+
+bool SystemTask::startPortalAction(Target& t) {
+    EvilPortal& portal = EvilPortal::getInstance();
+    if (portal.isRunning()) portal.stop();
+    return portal.start(t.ssid, t.channel, PortalTemplate::GENERIC_WIFI);
 }
 
 void SystemTask::handleActionStop() {

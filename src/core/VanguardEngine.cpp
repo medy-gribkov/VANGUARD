@@ -64,7 +64,7 @@ bool VanguardEngine::init() {
     if (m_initialized) return true;
 
     if (Serial) {
-        Serial.println("[Engine] Initializing...");
+        Serial.println("[ENGINE] Initializing...");
     }
 
     // IR is lazy-initialized on first use (RMT conflicts at boot)
@@ -105,7 +105,7 @@ bool VanguardEngine::init() {
     });
 
     if (Serial) {
-        Serial.printf("[Engine] Ready\n");
+        Serial.printf("[ENGINE] Ready\n");
     }
     return true;
 }
@@ -146,7 +146,7 @@ void VanguardEngine::tick() {
 
         // Safety timeout: if BLE_SCANNING for > 10 seconds, force complete
         if (elapsed > 10000) {
-            if (Serial) Serial.println("[Engine] BLE scan safety timeout (10s)");
+            if (Serial) Serial.println("[ENGINE] BLE scan safety timeout (10s)");
             BruceBLE::getInstance().stopScan();
             m_scanState = ScanState::COMPLETE;
             m_scanProgress = 100;
@@ -160,7 +160,7 @@ void VanguardEngine::tick() {
 // =============================================================================
 
 void VanguardEngine::beginScan() {
-    if (Serial) Serial.println("[Scan] === BEGIN COMBINED SCAN ===");
+    if (Serial) Serial.println("[SCAN] === BEGIN COMBINED SCAN ===");
 
     m_targetTable.clear();
     m_scanProgress = 0;
@@ -227,7 +227,7 @@ void VanguardEngine::handleSystemEvent(const SystemEvent& evt) {
         case SysEventType::WIFI_SCAN_COMPLETE:
         {
             int count = (int)(intptr_t)evt.data;
-            if (Serial) Serial.printf("[Engine] WiFi Scan Complete: %d\n", count);
+            if (Serial) Serial.printf("[ENGINE] WiFi Scan Complete: %d\n", count);
 
             // Process results and handle BLE transition if combined scan
             processScanResults(count);
@@ -257,7 +257,7 @@ void VanguardEngine::handleSystemEvent(const SystemEvent& evt) {
         
         case SysEventType::BLE_SCAN_COMPLETE:
         {
-            if (Serial) Serial.println("[Engine] BLE Scan Complete");
+            if (Serial) Serial.println("[ENGINE] BLE Scan Complete");
             m_scanState = ScanState::COMPLETE;
             m_scanProgress = 100;
             break;
@@ -295,7 +295,7 @@ void VanguardEngine::handleSystemEvent(const SystemEvent& evt) {
         case SysEventType::ERROR_OCCURRED:
         {
             const char* msg = (const char*)evt.data;
-            if (Serial) Serial.printf("[Engine] ERROR: %s\n", msg ? msg : "unknown");
+            if (Serial) Serial.printf("[ENGINE] ERROR: %s\n", msg ? msg : "unknown");
             m_actionActive = false;
             m_actionProgress.result = ActionResult::FAILED_HARDWARE;
             strncpy(m_actionProgress.statusText, msg ? msg : "Error", sizeof(m_actionProgress.statusText) - 1);
@@ -321,6 +321,11 @@ ScanState VanguardEngine::getScanState() const {
 
 uint8_t VanguardEngine::getScanProgress() const {
     return m_scanProgress;
+}
+
+uint32_t VanguardEngine::getScanElapsedMs() const {
+    if (m_scanState == ScanState::IDLE || m_scanState == ScanState::COMPLETE) return 0;
+    return millis() - m_scanStartMs;
 }
 
 void VanguardEngine::onScanProgress(ScanProgressCallback cb) {
@@ -392,7 +397,7 @@ void VanguardEngine::processScanResults(int count) {
     // If combined scan, start NON-BLOCKING transition to BLE
     if (m_combinedScan) {
         if (Serial) {
-            Serial.println("[Scan] WiFi done, starting BLE transition...");
+            Serial.println("[SCAN] WiFi done, starting BLE transition...");
         }
 
         // Start the transition state machine
@@ -432,7 +437,7 @@ void VanguardEngine::tickTransition() {
             m_transitionStep = 2; // Warden makes transition faster, jump to BLE
             m_transitionStartMs = millis();
             m_scanProgress = 46;
-            if (Serial) Serial.println("[Trans] Step 0: WiFi disable");
+            if (Serial) Serial.println("[SCAN] Step 0: WiFi disable");
             break;
 
 
@@ -444,7 +449,7 @@ void VanguardEngine::tickTransition() {
                 m_transitionStep = 3;
                 m_transitionStartMs = millis();
                 m_scanProgress = 48;
-                if (Serial) Serial.println("[Trans] Step 2: BLE shutdown");
+                if (Serial) Serial.println("[SCAN] Step 2: BLE shutdown");
             }
             break;
 
@@ -454,7 +459,7 @@ void VanguardEngine::tickTransition() {
                 m_transitionStep = 4;
                 m_transitionStartMs = millis();
                 m_bleInitAttempts = 0;
-                if (Serial) Serial.println("[Trans] Step 3: Ready for BLE init");
+                if (Serial) Serial.println("[SCAN] Step 3: Ready for BLE init");
             }
             break;
 
@@ -471,7 +476,7 @@ void VanguardEngine::tickTransition() {
                 }
 
                 if (Serial) {
-                    Serial.printf("[Trans] Step 4: BLE init attempt %d\n", m_bleInitAttempts);
+                    Serial.printf("[SCAN] Step 4: BLE init attempt %d\n", m_bleInitAttempts);
                 }
 
                 uint32_t initStart = millis();
@@ -479,7 +484,7 @@ void VanguardEngine::tickTransition() {
                 uint32_t initElapsed = millis() - initStart;
 
                 if (Serial) {
-                    Serial.printf("[Trans] BLE init took %ums\n", initElapsed);
+                    Serial.printf("[SCAN] BLE init took %ums\n", initElapsed);
                 }
 
                 if (initOk) {
@@ -487,10 +492,10 @@ void VanguardEngine::tickTransition() {
                     m_transitionStep = 5;
                     m_transitionStartMs = millis();
                     m_scanProgress = 49;
-                    if (Serial) Serial.println("[Trans] BLE init SUCCESS");
+                    if (Serial) Serial.println("[SCAN] BLE init SUCCESS");
                 } else if (m_bleInitAttempts >= 3) {
                     // Failed after 3 attempts, complete without BLE
-                    if (Serial) Serial.println("[Trans] BLE init FAILED after 3 attempts - BLE unavailable");
+                    if (Serial) Serial.println("[SCAN] BLE init FAILED after 3 attempts - BLE unavailable");
                     m_scanState = ScanState::COMPLETE;
                     m_scanProgress = 100;
                     if (m_onScanProgress) {
@@ -524,7 +529,7 @@ void VanguardEngine::tickTransition() {
                 });
 
                 ble.onScanComplete([this](int count) {
-                    if (Serial) Serial.printf("[Engine] BLE scan complete: %d devices\n", count);
+                    if (Serial) Serial.printf("[ENGINE] BLE scan complete: %d devices\n", count);
                     m_scanState = ScanState::COMPLETE;
                     m_scanProgress = 100;
                     if (m_onScanProgress) m_onScanProgress(m_scanState, m_scanProgress);
@@ -534,7 +539,7 @@ void VanguardEngine::tickTransition() {
 
                 if (!scanOk) {
                     // BLE scan failed (radio busy or init error), complete with WiFi-only results
-                    if (Serial) Serial.println("[Trans] BLE scan start FAILED, completing WiFi-only");
+                    if (Serial) Serial.println("[SCAN] BLE scan start FAILED, completing WiFi-only");
                     m_scanState = ScanState::COMPLETE;
                     m_scanProgress = 100;
                     if (m_onScanProgress) {
@@ -547,7 +552,7 @@ void VanguardEngine::tickTransition() {
                 m_scanProgress = 50;
                 m_scanStartMs = millis();
 
-                if (Serial) Serial.println("[Trans] Step 5: BLE scan started");
+                if (Serial) Serial.println("[SCAN] Step 5: BLE scan started");
 
                 if (m_onScanProgress) {
                     m_onScanProgress(m_scanState, m_scanProgress);
@@ -574,7 +579,7 @@ void VanguardEngine::tickTransition() {
     if (m_scanState == ScanState::TRANSITIONING_TO_BLE) {
         uint32_t totalElapsed = millis() - m_transitionTotalStartMs;
         if (totalElapsed > 5000) {
-            if (Serial) Serial.println("[Trans] Total timeout (5s), completing without BLE");
+            if (Serial) Serial.println("[SCAN] Total timeout (5s), completing without BLE");
             m_scanState = ScanState::COMPLETE;
             m_scanProgress = 100;
             if (m_onScanProgress) {
@@ -669,7 +674,7 @@ void VanguardEngine::stopAction() {
     m_actionProgress.statusText[sizeof(m_actionProgress.statusText) - 1] = '\0';
 
     if (Serial) {
-        Serial.println("[Attack] Stopping action...");
+        Serial.println("[ENGINE] Stopping action...");
     }
 }
 

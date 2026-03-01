@@ -40,10 +40,11 @@ jobs:
       - name: Build Firmware
         run: pio run -e m5stack-cardputer
 
-      - name: Run Unit Tests
+      - name: Run Unit Tests (ASan enabled)
         run: |
           mkdir -p .pio/build/native
-          pio test -e native --verbose 2>&1 | tee .pio/build/native/test_output.txt
+          PLATFORMIO_BUILD_FLAGS="-fsanitize=address -fno-omit-frame-pointer" \
+            pio test -e native --verbose 2>&1 | tee .pio/build/native/test_output.txt
 
       - name: Check Code Quality (Cppcheck)
         run: pio check --fail-on-defect=high --skip-packages --src-filters="+<src>"
@@ -53,10 +54,12 @@ jobs:
         run: |
           echo "### Test Results" >> $GITHUB_STEP_SUMMARY
           if [ -f .pio/build/native/test_output.txt ]; then
-            PASSED=$(grep -c '\[  PASSED  \]' .pio/build/native/test_output.txt 2>/dev/null || echo "0")
-            FAILED=$(grep -c '\[  FAILED  \]' .pio/build/native/test_output.txt 2>/dev/null || echo "0")
-            echo "| Result | Count |" >> $GITHUB_STEP_SUMMARY
+            PASSED=$(grep -oP '\[\s+PASSED\s+\]\s+\K[0-9]+' .pio/build/native/test_output.txt 2>/dev/null || echo "0")
+            FAILED=$(grep -oP '\d+(?= FAILED TEST)' .pio/build/native/test_output.txt 2>/dev/null || echo "0")
+            TOTAL=$(grep -oP 'Running \K[0-9]+(?= tests)' .pio/build/native/test_output.txt 2>/dev/null || echo "?")
+            echo "| Metric | Value |" >> $GITHUB_STEP_SUMMARY
             echo "|--------|-------|" >> $GITHUB_STEP_SUMMARY
+            echo "| Total  | $TOTAL |" >> $GITHUB_STEP_SUMMARY
             echo "| Passed | $PASSED |" >> $GITHUB_STEP_SUMMARY
             echo "| Failed | $FAILED |" >> $GITHUB_STEP_SUMMARY
           else

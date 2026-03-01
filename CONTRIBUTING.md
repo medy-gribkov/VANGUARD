@@ -30,6 +30,31 @@ pio test -e native --verbose
 - **Headers**: Use `#pragma once`. Keep includes minimal.
 - **No raw `new`/`delete`**: Use smart pointers or stack allocation.
 
+## Architecture
+
+VANGUARD runs on a dual-core ESP32-S3 (M5Cardputer):
+
+- **Core 0** runs `SystemTask` (WiFi/BLE/IR hardware, action execution, FreeRTOS queues).
+- **Core 1** runs `loop()` (UI state machine, keyboard input, `VanguardEngine` orchestration).
+- **IPC**: `SystemRequest` queue (UI -> Core 0, capacity 10), `SystemEvent` queue (Core 0 -> UI, capacity 40).
+
+### Singletons
+
+| Class | Scope | Purpose |
+|-------|-------|---------|
+| `SystemTask` | Core 0 | Background task, hardware control |
+| `VanguardEngine` | Core 1 | Scan orchestration, target table |
+| `BruceWiFi` | Core 0 | WiFi scanning and attacks |
+| `BruceBLE` | Core 0 | BLE scanning and spam |
+| `BruceIR` | Core 0 | IR replay and TV-B-Gone |
+| `EvilPortal` | Core 0 | Captive portal (Evil Twin) |
+| `RadioWarden` | Shared | Radio arbitration (WiFi vs BLE) |
+| `SDManager` | Shared | SD card access |
+| `FeedbackManager` | Core 1 | Haptic and audio feedback |
+| `CanvasManager` | Core 1 | Shared sprite for double-buffered rendering |
+
+All singletons use `getInstance()`. Never create additional instances.
+
 ## Test Requirements
 
 All native tests must pass before a PR can be merged:

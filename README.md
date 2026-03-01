@@ -4,9 +4,9 @@
   <h3>Target-First Wireless Auditing Suite for M5Cardputer ADV</h3>
 
   <p>
-    <a href="https://github.com/Mahdy-gribkov/VANGUARD/actions"><img src="https://img.shields.io/github/actions/workflow/status/Mahdy-gribkov/VANGUARD/build.yml?style=for-the-badge&label=BUILD" alt="Build Status"></a>
+    <a href="https://github.com/medy-gribkov/VANGUARD/actions"><img src="https://img.shields.io/github/actions/workflow/status/medy-gribkov/VANGUARD/build.yml?style=for-the-badge&label=BUILD" alt="Build Status"></a>
     <img src="https://img.shields.io/badge/Platform-ESP32--S3-blue?style=for-the-badge&logo=espressif" alt="Platform ESP32">
-    <img src="https://img.shields.io/badge/Version-v1.0.2-orange?style=for-the-badge" alt="Version">
+    <img src="https://img.shields.io/badge/Version-v1.0.3-orange?style=for-the-badge" alt="Version">
     <img src="https://img.shields.io/badge/License-AGPL--3.0-green?style=for-the-badge" alt="License">
   </p>
 
@@ -96,7 +96,7 @@ The target is the noun. The attack is the verb. Pick the noun first.
 Requires [PlatformIO](https://platformio.org/).
 
 ```bash
-git clone https://github.com/Mahdy-gribkov/VANGUARD.git
+git clone https://github.com/medy-gribkov/VANGUARD.git
 cd VANGUARD
 pio run -e m5stack-cardputer
 pio run -t upload

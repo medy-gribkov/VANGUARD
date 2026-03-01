@@ -51,8 +51,15 @@ bool RadioWarden::requestRadio(RadioOwner owner) {
 }
 
 void RadioWarden::releaseRadio() {
-    shutdownCurrent();
-    m_currentOwner = RadioOwner::NONE;
+    if (xSemaphoreTake(m_radioMutex, pdMS_TO_TICKS(2000)) == pdTRUE) {
+        shutdownCurrent();
+        m_currentOwner = RadioOwner::NONE;
+        xSemaphoreGive(m_radioMutex);
+    } else {
+        // Force release even without mutex (better than deadlock)
+        m_currentOwner = RadioOwner::NONE;
+        if (Serial) Serial.println("[Warden] releaseRadio mutex timeout, forced release");
+    }
 }
 
 void RadioWarden::shutdownCurrent() {

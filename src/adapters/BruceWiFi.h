@@ -334,6 +334,11 @@ public:
     uint32_t getEapolCount() const { return m_eapolCount; }
 
     /**
+     * @brief Get count of failed sendRawFrame calls during current attack
+     */
+    uint32_t getSendFailures() const { return m_sendFailures; }
+
+    /**
      * @brief Register attack progress callback
      */
     void onAttackProgress(AttackProgressCallback cb);
@@ -381,6 +386,7 @@ private:
 
     // Attack state
     std::atomic<uint32_t> m_packetsSent{0};
+    uint32_t           m_sendFailures;
     uint32_t           m_lastPacketMs;
     uint8_t            m_attackTargetMac[6];
     uint8_t            m_attackApMac[6];

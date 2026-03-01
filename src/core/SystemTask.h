@@ -90,6 +90,9 @@ private:
     // Recon state
     bool m_reconActive;
     uint32_t m_reconStartTime;
+
+    // Diagnostics
+    uint32_t m_lastDiagTime;
 };
 
 } // namespace Vanguard

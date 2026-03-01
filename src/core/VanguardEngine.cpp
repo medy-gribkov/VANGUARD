@@ -143,10 +143,28 @@ void VanguardEngine::tick() {
         tickRecon();
     }
 
-    // Interpolate BLE scan progress (50% to 99%) + safety timeout
+    // Interpolate WiFi scan progress (0-45% combined, 0-95% standalone)
+    if (m_scanState == ScanState::WIFI_SCANNING) {
+        uint32_t elapsed = millis() - m_scanStartMs;
+        uint8_t maxProgress = m_combinedScan ? 45 : 95;
+        // Active scan ~4.2s for 14 channels, use 5s as estimate
+        uint8_t progress = (uint8_t)((elapsed * maxProgress) / 5000);
+        if (progress > maxProgress) progress = maxProgress;
+        if (progress != m_scanProgress) {
+            m_scanProgress = progress;
+            if (m_onScanProgress) m_onScanProgress(m_scanState, m_scanProgress);
+        }
+    }
+
+    // Interpolate BLE scan progress + safety timeout
     if (m_scanState == ScanState::BLE_SCANNING) {
         uint32_t elapsed = millis() - m_scanStartMs;
-        uint8_t progress = 50 + (uint8_t)((elapsed * 49) / 3000);
+        uint8_t progress;
+        if (m_combinedScan) {
+            progress = 50 + (uint8_t)((elapsed * 49) / 3000);  // 50-99% for combined
+        } else {
+            progress = (uint8_t)((elapsed * 99) / 3000);  // 0-99% for BLE-only
+        }
         if (progress > 99) progress = 99;
         if (progress != m_scanProgress) {
             m_scanProgress = progress;
@@ -449,86 +467,65 @@ void VanguardEngine::processScanResults(int count) {
 
 void VanguardEngine::tickTransition() {
     // State machine for WiFi→BLE transition
-    // Each step does minimal work and returns, next tick continues
+    // With F1 fix, onDisable() now releases RadioWarden, so BLE init is cleaner.
     uint32_t elapsed = millis() - m_transitionStartMs;
 
     switch (m_transitionStep) {
         case 0:
-            // Step 0: Stop WiFi activity
+            // Step 0: Disable WiFi (releases radio via RadioWarden)
             BruceWiFi::getInstance().onDisable();
-            m_transitionStep = 2; // Warden makes transition faster, jump to BLE
+            m_transitionStep = 1;
             m_transitionStartMs = millis();
             m_scanProgress = 46;
-            if (Serial) Serial.println("[SCAN] Step 0: WiFi disable");
+            if (Serial) Serial.println("[SCAN] Step 0: WiFi disabled, radio released");
             break;
 
-
-        case 2:
-            // Step 2: Wait 50ms for radio to fully stop (BLE shutdown is instant when not running)
-            if (elapsed >= 50) {
-                BruceBLE& ble = BruceBLE::getInstance();
-                ble.shutdown();
-                m_transitionStep = 3;
-                m_transitionStartMs = millis();
-                m_scanProgress = 48;
-                if (Serial) Serial.println("[SCAN] Step 2: BLE shutdown");
-            }
-            break;
-
-        case 3:
-            // Step 3: Wait 50ms, then try BLE init
-            if (elapsed >= 50) {
-                m_transitionStep = 4;
+        case 1:
+            // Step 1: Wait 200ms for radio hardware to settle
+            if (elapsed >= 200) {
+                m_transitionStep = 2;
                 m_transitionStartMs = millis();
                 m_bleInitAttempts = 0;
-                if (Serial) Serial.println("[SCAN] Step 3: Ready for BLE init");
+                m_scanProgress = 48;
+                if (Serial) Serial.println("[SCAN] Step 1: Radio settled, ready for BLE");
             }
             break;
 
-        case 4:
-            // Step 4: Try BLE init (one attempt per tick)
+        case 2:
+            // Step 2: Enable BLE (init + requestRadio in one call)
             {
                 BruceBLE& ble = BruceBLE::getInstance();
                 m_bleInitAttempts++;
 
-                // Show progress movement so user knows it's not stuck
                 m_scanProgress = 48 + m_bleInitAttempts;
                 if (m_onScanProgress) {
                     m_onScanProgress(m_scanState, m_scanProgress);
                 }
 
-                if (Serial) {
-                    Serial.printf("[SCAN] Step 4: BLE init attempt %d\n", m_bleInitAttempts);
-                }
+                if (Serial) Serial.printf("[SCAN] Step 2: BLE enable attempt %d\n", m_bleInitAttempts);
 
                 uint32_t initStart = millis();
-                bool initOk = ble.init();
+                bool enableOk = ble.onEnable();  // Does init + requestRadio(OWNER_BLE)
                 uint32_t initElapsed = millis() - initStart;
 
-                if (Serial) {
-                    Serial.printf("[SCAN] BLE init took %ums\n", initElapsed);
-                }
+                if (Serial) Serial.printf("[SCAN] BLE enable took %ums -> %s\n", initElapsed, enableOk ? "OK" : "FAIL");
 
-                if (initOk) {
-                    // Success! Start BLE scan
-                    m_transitionStep = 5;
+                if (enableOk) {
+                    m_transitionStep = 3;
                     m_transitionStartMs = millis();
                     m_scanProgress = 49;
-                    if (Serial) Serial.println("[SCAN] BLE init SUCCESS");
                 } else if (m_bleInitAttempts >= 3) {
-                    // Failed after 3 attempts, still do recon with WiFi results
-                    if (Serial) Serial.println("[SCAN] BLE init FAILED after 3 attempts, starting recon");
+                    if (Serial) Serial.println("[SCAN] BLE enable FAILED after 3 attempts, starting recon");
                     startRecon();
                 } else {
-                    // Wait before retry
-                    m_transitionStep = 100;  // Wait state
+                    m_transitionStep = 100;  // Wait and retry
                     m_transitionStartMs = millis();
                 }
             }
             break;
 
-        case 5:
-            // Step 5: Start BLE scan
+        case 3:
+            // Step 3: Start BLE scan (BLE already enabled)
             {
                 BruceBLE& ble = BruceBLE::getInstance();
 
@@ -554,7 +551,6 @@ void VanguardEngine::tickTransition() {
                 bool scanOk = ble.beginScan(3000);
 
                 if (!scanOk) {
-                    // BLE scan failed, still do recon with WiFi-only results
                     if (Serial) Serial.println("[SCAN] BLE scan start FAILED, starting recon");
                     startRecon();
                     break;
@@ -564,7 +560,7 @@ void VanguardEngine::tickTransition() {
                 m_scanProgress = 50;
                 m_scanStartMs = millis();
 
-                if (Serial) Serial.println("[SCAN] Step 5: BLE scan started");
+                if (Serial) Serial.println("[SCAN] Step 3: BLE scan started");
 
                 if (m_onScanProgress) {
                     m_onScanProgress(m_scanState, m_scanProgress);
@@ -573,15 +569,14 @@ void VanguardEngine::tickTransition() {
             break;
 
         case 100:
-            // Wait state: wait 200ms between retries for stable radio state
+            // Wait state: 200ms between retries for stable radio state
             if (elapsed >= 200) {
-                m_transitionStep = 4;
+                m_transitionStep = 2;
                 m_transitionStartMs = millis();
             }
             break;
 
         default:
-            // Shouldn't happen, force complete
             m_scanState = ScanState::COMPLETE;
             m_scanProgress = 100;
             break;
@@ -636,6 +631,7 @@ void VanguardEngine::startRecon() {
     if (channelCount == 0) {
         // No APs found, skip recon
         if (Serial) Serial.println("[ENGINE] No APs for recon, completing scan");
+        BruceWiFi::getInstance().onDisable();  // Clean WiFi state and release radio
         m_scanState = ScanState::COMPLETE;
         m_scanProgress = 100;
         if (m_onScanProgress) m_onScanProgress(m_scanState, m_scanProgress);
@@ -696,6 +692,9 @@ void VanguardEngine::tickRecon() {
         SystemRequest req;
         req.cmd = SysCommand::RECON_STOP;
         SystemTask::getInstance().sendRequest(req);
+
+        // Clean WiFi state: disable and release radio for clean attack init later
+        BruceWiFi::getInstance().onDisable();
 
         m_scanState = ScanState::COMPLETE;
         m_scanProgress = 100;

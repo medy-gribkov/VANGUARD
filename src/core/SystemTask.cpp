@@ -23,7 +23,8 @@ SystemTask::SystemTask() :
     m_droppedEvents(0),
     m_lastError(nullptr),
     m_reconActive(false),
-    m_reconStartTime(0)
+    m_reconStartTime(0),
+    m_lastDiagTime(0)
 {
     // Create Queues
     // Request Queue: UI -> System (Capacity 10)
@@ -90,11 +91,16 @@ void SystemTask::run() {
         // Wait 10ms for a request
         if (xQueueReceive(m_reqQueue, &req, pdMS_TO_TICKS(10)) == pdTRUE) {
             handleRequest(req);
-            
+
             // Clean up payload if needed
             if (req.freeCb && req.payload) {
                 req.freeCb(req.payload);
             }
+
+            // Refresh timestamp after potentially slow request handling
+            // (e.g., requestRadio → shutdownCurrent → 50ms delay)
+            // Prevents unsigned underflow in action timeout check
+            now = millis();
         }
         
         // 2. Tick Active Adapters
@@ -146,6 +152,10 @@ void SystemTask::run() {
              }
 
              if (completed) {
+                 if (Serial) Serial.printf("[SYSTEM] Action COMPLETED: result=%d pkts=%u elapsed=%ums now=%u start=%u\n",
+                     (int)result, BruceWiFi::getInstance().getPacketsSent() + BruceBLE::getInstance().getAdvertisementsSent(),
+                     now - m_actionStartTime, now, m_actionStartTime);
+
                  // Stop hardware
                  BruceWiFi::getInstance().stopHardwareActivities();
                  BruceBLE::getInstance().stopHardwareActivities();
@@ -224,6 +234,18 @@ void SystemTask::run() {
                   prog->timeoutMs = getActionTimeout(m_currentAction);
                   sendEvent(SysEventType::ACTION_PROGRESS, prog, sizeof(ActionProgress), true);
                   m_lastProgressTime = now;
+             }
+
+             // Periodic diagnostic (every 5s) for serial debugging
+             if (now - m_lastDiagTime > 5000) {
+                 m_lastDiagTime = now;
+                 if (Serial) {
+                     Serial.printf("[DIAG] act=%d elapsed=%ums wifiState=%d pkts=%u fails=%u\n",
+                         (int)m_currentAction, now - m_actionStartTime,
+                         (int)BruceWiFi::getInstance().getState(),
+                         BruceWiFi::getInstance().getPacketsSent(),
+                         BruceWiFi::getInstance().getSendFailures());
+                 }
              }
         }
         
@@ -449,7 +471,8 @@ void SystemTask::handleActionStart(ActionRequest* req) {
     ActionType type = req->type;
     Target& t = req->target;
 
-    if (Serial) Serial.printf("[SYSTEM] Action start: %d\n", (int)type);
+    if (Serial) Serial.printf("[SYSTEM] Action start: type=%d target='%s' ch=%d\n",
+        (int)type, t.ssid, t.channel);
 
     // IR actions complete instantly, skip m_actionActive
     if (type == ActionType::IR_REPLAY || type == ActionType::IR_TVBGONE) {
@@ -491,9 +514,11 @@ void SystemTask::handleActionStart(ActionRequest* req) {
         m_actionStartTime = millis();
         m_lastProgressTime = millis();
         m_lastError = nullptr;
+        if (Serial) Serial.printf("[SYSTEM] Action ACTIVE: startTime=%u\n", m_actionStartTime);
     } else {
         m_actionActive = false;
         const char* errMsg = m_lastError ? m_lastError : "Hardware init failed";
+        if (Serial) Serial.printf("[SYSTEM] Action FAILED to start: %s\n", errMsg);
         sendEvent(SysEventType::ERROR_OCCURRED, (void*)errMsg, 0, false);
         m_lastError = nullptr;
     }

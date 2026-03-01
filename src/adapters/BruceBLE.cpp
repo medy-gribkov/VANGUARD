@@ -64,11 +64,13 @@ bool BruceBLE::onEnable() {
 
 void BruceBLE::onDisable() {
     if (!m_enabled) return;
-    
+
     stopHardwareActivities();
     // We only stop activities, never deinit NimBLE
     m_enabled = false;
     m_state = BLEAdapterState::IDLE;
+    // Release radio so other protocols (WiFi) can acquire it cleanly
+    RadioWarden::getInstance().releaseRadio();
 }
 
 bool BruceBLE::init() {
@@ -79,6 +81,10 @@ bool BruceBLE::init() {
     }
 
     uint32_t initStart = millis();
+
+    // Pre-allocate device vector to avoid heap allocation inside portENTER_CRITICAL
+    // (push_back with realloc + interrupts disabled = panic/WDT on ESP32-S3)
+    m_devices.reserve(32);
 
     if (!NimBLEDevice::getInitialized()) {
         NimBLEDevice::init("VANGUARD");

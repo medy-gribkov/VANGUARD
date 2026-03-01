@@ -92,6 +92,7 @@ BruceWiFi::BruceWiFi()
     , m_currentChannel(1)
     , m_promiscuousEnabled(false)
     , m_packetsSent(0)
+    , m_sendFailures(0)
     , m_lastPacketMs(0)
     , m_handshakeCaptured(false)
     , m_onScanComplete(nullptr)
@@ -140,13 +141,14 @@ bool BruceWiFi::onEnable() {
 
 void BruceWiFi::onDisable() {
     if (!m_enabled) return;
-    
+
     stopHardwareActivities();
     setPromiscuous(false);
-    // Warden handles the low-level esp_wifi_stop()
     m_enabled = false;
     m_initialized = false;
     m_state = WiFiAdapterState::IDLE;
+    // Release radio so other protocols (BLE) can acquire it cleanly
+    RadioWarden::getInstance().releaseRadio();
 }
 
 bool BruceWiFi::init() {
@@ -233,9 +235,9 @@ void BruceWiFi::beginScan() {
         stopHardwareActivities();
     }
 
-    // Passive scan is more stable and catches stealthy APs
-    // 120ms dwell time per channel
-    WiFi.scanNetworks(true, true, true, 120); 
+    // Active scan: sends probe requests, forces APs to respond
+    // 300ms dwell time per channel (~4.2s total for 14 channels)
+    WiFi.scanNetworks(true, true, false, 300);
     m_state = WiFiAdapterState::SCANNING;
 }
 
@@ -301,6 +303,7 @@ bool BruceWiFi::deauthStation(const uint8_t* stationMac,
     if (!m_initialized) return false;
 
     stopHardwareActivities();
+    esp_wifi_start();  // Ensure WiFi STA mode is active
     setChannel(channel);
 
     memcpy(m_attackTargetMac, stationMac, 6);
@@ -337,10 +340,13 @@ void BruceWiFi::tickDeauth() {
     memcpy(&frame[16], m_attackApMac, 6);
 
     // Send frame 3 times (like Bruce does)
-    sendRawFrame(frame, DEAUTH_FRAME_LEN);
-    sendRawFrame(frame, DEAUTH_FRAME_LEN);
-    sendRawFrame(frame, DEAUTH_FRAME_LEN);
-    m_packetsSent += 3;
+    for (int i = 0; i < 3; i++) {
+        if (sendRawFrame(frame, DEAUTH_FRAME_LEN)) {
+            m_packetsSent++;
+        } else {
+            m_sendFailures++;
+        }
+    }
 
     if (m_onAttackProgress) {
         m_onAttackProgress(m_packetsSent);
@@ -357,6 +363,7 @@ bool BruceWiFi::beaconFlood(const char** ssids, size_t count, uint8_t channel) {
     if (!m_initialized || count == 0) return false;
 
     stopHardwareActivities();
+    esp_wifi_start();  // Ensure WiFi STA mode is active
     setChannel(channel);
 
     m_beaconSsidCount = min(count, (size_t)MAX_BEACON_SSIDS);
@@ -436,8 +443,11 @@ void BruceWiFi::tickBeaconFlood() {
     frame[BEACON_CHANNEL_OFFSET] = m_beaconChannel;
 
     // Send beacon
-    sendRawFrame(frame, BEACON_FRAME_LEN);
-    m_packetsSent++;
+    if (sendRawFrame(frame, BEACON_FRAME_LEN)) {
+        m_packetsSent++;
+    } else {
+        m_sendFailures++;
+    }
 
     // Rotate to next SSID
     m_beaconCurrentIndex = (m_beaconCurrentIndex + 1) % m_beaconSsidCount;
@@ -503,8 +513,11 @@ void BruceWiFi::tickHandshakeCapture() {
         memcpy(&frame[10], m_attackApMac, 6);
         memcpy(&frame[16], m_attackApMac, 6);
 
-        sendRawFrame(frame, DEAUTH_FRAME_LEN);
-        m_packetsSent++;
+        if (sendRawFrame(frame, DEAUTH_FRAME_LEN)) {
+            m_packetsSent++;
+        } else {
+            m_sendFailures++;
+        }
     }
 
     // Handshake detection happens in promiscuous callback
@@ -553,9 +566,14 @@ bool BruceWiFi::startProbeFlood(uint8_t channel) {
     if (!m_initialized) return false;
 
     stopHardwareActivities();
+
+    // Ensure WiFi STA mode is active (may have been stopped after recon)
+    esp_wifi_start();
+
     setChannel(channel);
 
     m_packetsSent = 0;
+    m_sendFailures = 0;
     m_lastPacketMs = 0;
     m_state = WiFiAdapterState::PROBE_FLOODING;
 
@@ -613,8 +631,14 @@ void BruceWiFi::tickProbeFlood() {
     frame[ratesOffset + 5] = 0x96;
 
     int frameLen = ratesOffset + 6;
-    sendRawFrame(frame, frameLen);
-    m_packetsSent++;
+    if (sendRawFrame(frame, frameLen)) {
+        m_packetsSent++;
+    } else {
+        m_sendFailures++;
+        if (Serial && m_sendFailures % 100 == 1) {
+            Serial.printf("[WiFi] sendRawFrame FAILED (total failures: %u)\n", m_sendFailures);
+        }
+    }
 
     if (m_onAttackProgress) {
         m_onAttackProgress(m_packetsSent);
@@ -643,6 +667,7 @@ void BruceWiFi::stopHardwareActivities() {
     setPcapLogging(false); // Ensure PCAP closed
     m_state = WiFiAdapterState::IDLE;
     m_packetsSent = 0;
+    m_sendFailures = 0;
     m_eapolCount = 0;
 }
 
@@ -808,6 +833,9 @@ void BruceWiFi::promiscuousCallback(void* buf, wifi_promiscuous_pkt_type_t type)
         if (clientMac && apMac && s_instance->m_onAssociation) {
             // Check if client is not broadcast/multicast
             if (!(clientMac[0] & 0x01)) {
+                if (Serial) Serial.printf("[WiFi] Association: %02X:%02X:%02X:%02X:%02X:%02X -> %02X:%02X:%02X:%02X:%02X:%02X\n",
+                    clientMac[0], clientMac[1], clientMac[2], clientMac[3], clientMac[4], clientMac[5],
+                    apMac[0], apMac[1], apMac[2], apMac[3], apMac[4], apMac[5]);
                 s_instance->m_onAssociation(clientMac, apMac);
             }
         }

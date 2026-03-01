@@ -134,6 +134,11 @@ public:
     uint8_t getScanProgress() const;
 
     /**
+     * @brief Get elapsed scan time in milliseconds (0 if not scanning)
+     */
+    uint32_t getScanElapsedMs() const;
+
+    /**
      * @brief Register callback for scan updates
      */
     void onScanProgress(ScanProgressCallback cb);

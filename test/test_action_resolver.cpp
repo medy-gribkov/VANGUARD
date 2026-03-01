@@ -50,7 +50,24 @@ protected:
         return t;
     }
 
+    // Check if an enabled action exists
     bool hasAction(const std::vector<AvailableAction>& actions, ActionType type) {
+        for (const auto& a : actions) {
+            if (a.type == type && a.enabled) return true;
+        }
+        return false;
+    }
+
+    // Check if a disabled action exists (present but grayed out)
+    bool hasDisabledAction(const std::vector<AvailableAction>& actions, ActionType type) {
+        for (const auto& a : actions) {
+            if (a.type == type && !a.enabled) return true;
+        }
+        return false;
+    }
+
+    // Check if action exists at all (enabled or disabled)
+    bool hasAnyAction(const std::vector<AvailableAction>& actions, ActionType type) {
         for (const auto& a : actions) {
             if (a.type == type) return true;
         }
@@ -212,11 +229,16 @@ TEST_F(ActionResolverTest, FiveGHzTargetNoWiFiActions) {
     Target ap5g = makeWiFiAP("5GHz-Net", SecurityType::WPA2_PSK, 3, 36);
     auto actions = resolver.getActionsFor(ap5g);
 
-    // All WiFi actions should be filtered out
+    // All WiFi actions should be disabled (present but grayed out)
     EXPECT_FALSE(hasAction(actions, ActionType::DEAUTH_ALL));
     EXPECT_FALSE(hasAction(actions, ActionType::BEACON_FLOOD));
     EXPECT_FALSE(hasAction(actions, ActionType::EVIL_TWIN));
-    EXPECT_EQ(actions.size(), 0u);
+    // Actions are present but disabled
+    EXPECT_TRUE(hasDisabledAction(actions, ActionType::DEAUTH_ALL));
+    // No enabled actions
+    for (const auto& a : actions) {
+        EXPECT_FALSE(a.enabled);
+    }
 }
 
 TEST_F(ActionResolverTest, TwoFourGHzTargetGetsActions) {

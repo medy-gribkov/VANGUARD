@@ -67,7 +67,11 @@ private:
     bool startBLEAction(ActionType type);
     void startIRAction(ActionType type);
     bool startPortalAction(Target& target);
-    
+
+    // Recon (post-scan client discovery)
+    void handleReconChannel(uint32_t channel);
+    void handleReconStop();
+
     // Helpers
     void sendEvent(SysEventType type, void* data = nullptr, size_t len = 0, bool isPtr = false);
     uint32_t getActionTimeout(ActionType type) const;
@@ -81,6 +85,11 @@ private:
     uint32_t m_lastProgressTime;
     Target m_currentTarget;
     uint32_t m_droppedEvents;
+    const char* m_lastError;
+
+    // Recon state
+    bool m_reconActive;
+    uint32_t m_reconStartTime;
 };
 
 } // namespace Vanguard

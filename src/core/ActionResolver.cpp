@@ -4,6 +4,7 @@
  */
 
 #include "ActionResolver.h"
+#include <algorithm>
 
 namespace Vanguard {
 
@@ -12,128 +13,24 @@ namespace Vanguard {
 // =============================================================================
 
 const ActionResolver::ActionDefinition ActionResolver::s_actionDefs[] = {
-    // WiFi AP Actions
-    {
-        ActionType::MONITOR,
-        "Monitor",
-        "Passively capture packets",
-        false,
-        TargetType::ACCESS_POINT,
-        false,
-        SecurityType::UNKNOWN
-    },
-    {
-        ActionType::DEAUTH_ALL,
-        "Deauth All",
-        "Disconnect all clients",
-        true,
-        TargetType::ACCESS_POINT,
-        true,   // Requires clients!
-        SecurityType::UNKNOWN
-    },
-    {
-        ActionType::DEAUTH_SINGLE,
-        "Deauth One",
-        "Disconnect specific client",
-        true,
-        TargetType::ACCESS_POINT,
-        true,   // Requires clients!
-        SecurityType::UNKNOWN
-    },
-    {
-        ActionType::BEACON_FLOOD,
-        "Clone Beacon",
-        "Spam copies of this network",
-        true,
-        TargetType::ACCESS_POINT,
-        false,
-        SecurityType::UNKNOWN
-    },
-    {
-        ActionType::EVIL_TWIN,
-        "Evil Twin",
-        "Fake AP with captive portal",
-        true,
-        TargetType::ACCESS_POINT,
-        false,
-        SecurityType::UNKNOWN
-    },
-    {
-        ActionType::CAPTURE_PMKID,
-        "Capture PMKID",
-        "Grab hash for offline crack",
-        false,
-        TargetType::ACCESS_POINT,
-        false,
-        SecurityType::WPA3_SAE  // Incompatible with WPA3
-    },
-    {
-        ActionType::PROBE_FLOOD,
-        "Probe Flood",
-        "Flood channel with fake probes",
-        true,
-        TargetType::ACCESS_POINT,
-        false,
-        SecurityType::UNKNOWN
-    },
-    {
-        ActionType::CAPTURE_HANDSHAKE,
-        "Capture Handshake",
-        "4-way WPA handshake",
-        false,
-        TargetType::ACCESS_POINT,
-        true,   // Need client to reconnect
-        SecurityType::OPEN  // Incompatible with Open
-    },
+    // WiFi AP Actions - sorted by priority in definition, but getActionsFor() also sorts
+    {ActionType::DEAUTH_ALL,        "Deauth All",        "Disconnect all clients",       true,  TargetType::ACCESS_POINT, true,  SecurityType::UNKNOWN,  10},
+    {ActionType::DEAUTH_SINGLE,     "Deauth One",        "Disconnect specific client",   true,  TargetType::ACCESS_POINT, true,  SecurityType::UNKNOWN,  10},
+    {ActionType::EVIL_TWIN,         "Evil Twin",         "Fake AP with captive portal",  true,  TargetType::ACCESS_POINT, false, SecurityType::UNKNOWN,  20},
+    {ActionType::BEACON_FLOOD,      "Clone Beacon",      "Spam copies of this network",  true,  TargetType::ACCESS_POINT, false, SecurityType::UNKNOWN,  20},
+    {ActionType::CAPTURE_HANDSHAKE, "Capture Handshake", "4-way WPA handshake",          false, TargetType::ACCESS_POINT, true,  SecurityType::OPEN,     30},
+    {ActionType::CAPTURE_PMKID,     "Capture PMKID",     "Grab hash for offline crack",  false, TargetType::ACCESS_POINT, false, SecurityType::WPA3_SAE, 30},
+    {ActionType::MONITOR,           "Monitor",           "Passively capture packets",    false, TargetType::ACCESS_POINT, false, SecurityType::UNKNOWN,  40},
+    {ActionType::PROBE_FLOOD,       "Probe Flood",       "Flood channel with fake probes", true, TargetType::ACCESS_POINT, false, SecurityType::UNKNOWN, 40},
 
     // BLE Actions
-    {
-        ActionType::BLE_SPAM,
-        "BLE Spam",
-        "Flood with pairing requests",
-        true,
-        TargetType::BLE_DEVICE,
-        false,
-        SecurityType::UNKNOWN
-    },
-    {
-        ActionType::BLE_SOUR_APPLE,
-        "Sour Apple",
-        "Apple device disruption",
-        true,
-        TargetType::BLE_DEVICE,
-        false,
-        SecurityType::UNKNOWN
-    },
-    {
-        ActionType::BLE_SKIMMER_DETECT,
-        "Skimmer Detect",
-        "Scan for suspicious BLE devices",
-        false,
-        TargetType::BLE_DEVICE,
-        false,
-        SecurityType::UNKNOWN
-    },
+    {ActionType::BLE_SPAM,          "BLE Spam",          "Flood with pairing requests",  true,  TargetType::BLE_DEVICE, false, SecurityType::UNKNOWN, 35},
+    {ActionType::BLE_SOUR_APPLE,    "Sour Apple",        "Apple device disruption",      true,  TargetType::BLE_DEVICE, false, SecurityType::UNKNOWN, 35},
+    {ActionType::BLE_SKIMMER_DETECT,"Skimmer Detect",    "Scan for suspicious devices",  false, TargetType::BLE_DEVICE, false, SecurityType::UNKNOWN, 50},
 
     // IR Actions
-    {
-        ActionType::IR_REPLAY,
-        "IR Replay",
-        "Record and replay IR signal",
-        false,
-        TargetType::IR_DEVICE,
-        false,
-        SecurityType::UNKNOWN
-    },
-    {
-        ActionType::IR_TVBGONE,
-        "TV-B-Gone",
-        "Power cycle nearby TVs",
-        true,
-        TargetType::IR_DEVICE,
-        false,
-        SecurityType::UNKNOWN
-    }
+    {ActionType::IR_REPLAY,         "IR Replay",         "Record and replay IR signal",  false, TargetType::IR_DEVICE, false, SecurityType::UNKNOWN, 50},
+    {ActionType::IR_TVBGONE,        "TV-B-Gone",         "Power cycle nearby TVs",       true,  TargetType::IR_DEVICE, false, SecurityType::UNKNOWN, 50},
 };
 
 const size_t ActionResolver::s_actionDefCount =
@@ -151,41 +48,45 @@ std::vector<AvailableAction> ActionResolver::getActionsFor(const Target& target)
     for (size_t i = 0; i < s_actionDefCount; i++) {
         const ActionDefinition& def = s_actionDefs[i];
 
-        // CRITICAL: Only show actions that are actually implemented
-        if (!isImplemented(def.type)) {
-            continue;
-        }
+        // Only show implemented actions
+        if (!isImplemented(def.type)) continue;
 
-        // Check target type
-        if (!checkTargetType(target, def.requiredTargetType)) {
-            continue;
-        }
+        // Must match target type (skip entirely if wrong type)
+        if (!checkTargetType(target, def.requiredTargetType)) continue;
 
-        // Check 5GHz - can't do WiFi attacks on 5GHz networks
-        if (!check5GHzCompatibility(target, def.type)) {
-            continue;
-        }
-
-        // Check client requirement
-        if (!checkClientRequirement(target, def.requiresClients)) {
-            continue;
-        }
-
-        // Check security compatibility
-        if (!checkSecurityCompatibility(target, def.incompatibleSecurity)) {
-            continue;
-        }
-
-        // This action is valid!
         AvailableAction action;
         action.type = def.type;
         action.label = def.label;
         action.description = def.description;
         action.isDestructive = def.isDestructive;
         action.requiresClients = def.requiresClients;
+        action.priority = def.priority;
+        action.enabled = true;
+        action.disabledReason = nullptr;
+
+        // Check each requirement. If failed, disable instead of hiding.
+        if (!check5GHzCompatibility(target, def.type)) {
+            action.enabled = false;
+            action.disabledReason = "5GHz not supported";
+            action.priority = 99;
+        } else if (!checkClientRequirement(target, def.requiresClients)) {
+            action.enabled = false;
+            action.disabledReason = "No clients found";
+            action.priority = 99;
+        } else if (!checkSecurityCompatibility(target, def.incompatibleSecurity)) {
+            action.enabled = false;
+            action.disabledReason = "Wrong security type";
+            action.priority = 99;
+        }
 
         result.push_back(action);
     }
+
+    // Sort: enabled actions first by priority, disabled at end
+    std::sort(result.begin(), result.end(), [](const AvailableAction& a, const AvailableAction& b) {
+        if (a.enabled != b.enabled) return a.enabled;
+        return a.priority < b.priority;
+    });
 
     return result;
 }

@@ -227,6 +227,8 @@ void TargetDetail::select() {
 
         case DetailViewState::ACTIONS:
             if (m_actionIndex >= 0 && m_actionIndex < (int)m_actions.size()) {
+                // Block selection of disabled actions
+                if (!m_actions[m_actionIndex].enabled) break;
                 // Regular action
                 if (m_actions[m_actionIndex].isDestructive) {
                     transitionTo(DetailViewState::CONFIRM);
@@ -348,14 +350,18 @@ const Target& TargetDetail::getTarget() const {
 // =============================================================================
 
 void TargetDetail::renderHeader() {
-    m_canvas->fillRect(0, 0, Theme::SCREEN_WIDTH, Theme::HEADER_HEIGHT,
+    // Accent lines
+    m_canvas->drawFastHLine(0, 0, Theme::SCREEN_WIDTH, Theme::COLOR_ACCENT);
+    m_canvas->drawFastHLine(0, 1, Theme::SCREEN_WIDTH, Theme::COLOR_ACCENT_DIM);
+
+    m_canvas->fillRect(0, 2, Theme::SCREEN_WIDTH, Theme::HEADER_HEIGHT,
                        Theme::COLOR_SURFACE);
 
     // Back indicator
     m_canvas->setTextSize(1);
     m_canvas->setTextColor(Theme::COLOR_ACCENT);
     m_canvas->setTextDatum(TL_DATUM);
-    m_canvas->drawString("<Q", 4, 3);
+    m_canvas->drawString("<Q", 4, 5);
 
     // Target SSID (truncated if needed)
     char ssidDisplay[20];
@@ -365,14 +371,14 @@ void TargetDetail::renderHeader() {
         strcat(ssidDisplay, "..");
     }
     m_canvas->setTextColor(Theme::COLOR_TEXT_PRIMARY);
-    m_canvas->drawString(ssidDisplay, 28, 3);
+    m_canvas->drawString(ssidDisplay, 28, 5);
 
     // Signal strength on right
     char rssiStr[12];
     snprintf(rssiStr, sizeof(rssiStr), "%d dBm", m_target.rssi);
     m_canvas->setTextDatum(TR_DATUM);
     m_canvas->setTextColor(Theme::getSignalColor(m_target.rssi));
-    m_canvas->drawString(rssiStr, Theme::SCREEN_WIDTH - 4, 3);
+    m_canvas->drawString(rssiStr, Theme::SCREEN_WIDTH - 4, 5);
 }
 
 void TargetDetail::renderInfo() {
@@ -607,30 +613,34 @@ void TargetDetail::renderActionItem(const AvailableAction& action, int y, bool s
     int16_t w = Theme::SCREEN_WIDTH - 16;
     int16_t h = 20;
 
+    bool disabled = !action.enabled;
+
     // Background
-    uint16_t bgColor = selected ? Theme::COLOR_SURFACE_RAISED : Theme::COLOR_SURFACE;
+    uint16_t bgColor = disabled ? Theme::COLOR_BACKGROUND :
+                       selected ? Theme::COLOR_SURFACE_RAISED : Theme::COLOR_SURFACE;
     m_canvas->fillRoundRect(x, y, w, h, 3, bgColor);
 
-    if (selected) {
+    if (selected && !disabled) {
         m_canvas->fillRect(x, y, 3, h, Theme::COLOR_ACCENT);
     }
 
-    // Destructive indicator
-    if (action.isDestructive) {
+    // Destructive indicator (only for enabled actions)
+    if (action.isDestructive && !disabled) {
         m_canvas->fillCircle(x + 10, y + h/2, 3, Theme::COLOR_DANGER);
     }
 
     // Label
     m_canvas->setTextSize(1);
-    m_canvas->setTextColor(Theme::COLOR_TEXT_PRIMARY);
+    m_canvas->setTextColor(disabled ? Theme::COLOR_TEXT_DISABLED : Theme::COLOR_TEXT_PRIMARY);
     m_canvas->setTextDatum(TL_DATUM);
     m_canvas->drawString(action.label, x + 18, y + 2);
 
-    // Description (truncated)
+    // Description or disabled reason
+    const char* subtext = disabled && action.disabledReason ? action.disabledReason : action.description;
     char descDisplay[32];
-    strncpy(descDisplay, action.description, 28);
+    strncpy(descDisplay, subtext, 28);
     descDisplay[28] = '\0';
-    m_canvas->setTextColor(Theme::COLOR_TEXT_MUTED);
+    m_canvas->setTextColor(disabled ? Theme::COLOR_TEXT_DISABLED : Theme::COLOR_TEXT_MUTED);
     m_canvas->drawString(descDisplay, x + 18, y + 11);
 }
 
@@ -695,7 +705,7 @@ void TargetDetail::renderExecuting() {
     int16_t barX = (Theme::SCREEN_WIDTH - barW) / 2;
     int16_t barY = centerY - 16;
     m_canvas->drawRect(barX, barY, barW, barH, Theme::COLOR_SURFACE_RAISED);
-    uint32_t estTimeout = 30000;
+    uint32_t estTimeout = m_progress.timeoutMs > 0 ? m_progress.timeoutMs : 30000;
     if (m_progress.elapsedMs > 0) {
         uint8_t pct = (uint8_t)min((uint32_t)95, m_progress.elapsedMs * 100 / estTimeout);
         int16_t fillW = (barW - 2) * pct / 100;

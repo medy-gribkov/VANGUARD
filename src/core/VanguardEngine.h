@@ -280,7 +280,8 @@ private:
     uint8_t  m_bleInitAttempts;    // Number of BLE init retry attempts
 
     // Internal tick handlers
-    void tickTransition();  // Handle WiFi->BLE transition steps
+    void tickTransition();   // Handle WiFi->BLE transition steps
+    void tickRecon();        // Handle post-scan recon phase
 
     /**
      * @brief Handle events from the System Task (Core 0)
@@ -289,6 +290,13 @@ private:
 
     // Internal helpers
     void processScanResults(int count);
+    void startRecon();       // Begin post-scan client discovery
+
+    // Recon state
+    uint8_t  m_reconChannels[14];  // Channels to scan during recon
+    uint8_t  m_reconChannelCount;  // Total channels
+    uint8_t  m_reconCurrentIdx;    // Current channel index
+    bool     m_reconWaiting;       // Waiting for RECON_DONE from SystemTask
 };
 
 } // namespace Vanguard

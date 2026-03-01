@@ -79,12 +79,16 @@ void TargetRadar::render() {
     // Draw everything to sprite first (off-screen)
     m_canvas->fillScreen(Theme::COLOR_BACKGROUND);
 
+    // Accent lines
+    m_canvas->drawFastHLine(0, 0, Theme::SCREEN_WIDTH, Theme::COLOR_ACCENT);
+    m_canvas->drawFastHLine(0, 1, Theme::SCREEN_WIDTH, Theme::COLOR_ACCENT_DIM);
+
     // Header
-    m_canvas->fillRect(0, 0, Theme::SCREEN_WIDTH, HEADER_HEIGHT, Theme::COLOR_SURFACE);
+    m_canvas->fillRect(0, 2, Theme::SCREEN_WIDTH, HEADER_HEIGHT, Theme::COLOR_SURFACE);
     m_canvas->setTextSize(1);
     m_canvas->setTextColor(Theme::COLOR_ACCENT);
     m_canvas->setTextDatum(TL_DATUM);
-    m_canvas->drawString("VANGUARD RADAR", 4, 3);
+    m_canvas->drawString("VANGUARD RADAR", 4, 5);
 
     // Count WiFi and BLE targets
     int wifiCount = 0, bleCount = 0;
@@ -102,7 +106,7 @@ void TargetRadar::render() {
     }
     m_canvas->setTextDatum(TR_DATUM);
     m_canvas->setTextColor(Theme::COLOR_ACCENT);
-    m_canvas->drawString(countStr, Theme::SCREEN_WIDTH - 4, 3);
+    m_canvas->drawString(countStr, Theme::SCREEN_WIDTH - 4, 5);
 
     // Battery indicator
     int batLevel = M5Cardputer.Power.getBatteryLevel();
@@ -111,7 +115,7 @@ void TargetRadar::render() {
         snprintf(batStr, sizeof(batStr), "%d%%", batLevel);
         m_canvas->setTextDatum(TC_DATUM);
         m_canvas->setTextColor(batLevel < 20 ? Theme::COLOR_DANGER : Theme::COLOR_TEXT_MUTED);
-        m_canvas->drawString(batStr, Theme::SCREEN_WIDTH / 2, 3);
+        m_canvas->drawString(batStr, Theme::SCREEN_WIDTH / 2, 5);
     }
 
     if (m_targets.empty()) {
@@ -195,12 +199,16 @@ void TargetRadar::renderScanning() {
     // Draw to sprite
     m_canvas->fillScreen(Theme::COLOR_BACKGROUND);
 
+    // Accent lines
+    m_canvas->drawFastHLine(0, 0, Theme::SCREEN_WIDTH, Theme::COLOR_ACCENT);
+    m_canvas->drawFastHLine(0, 1, Theme::SCREEN_WIDTH, Theme::COLOR_ACCENT_DIM);
+
     // Header
-    m_canvas->fillRect(0, 0, Theme::SCREEN_WIDTH, HEADER_HEIGHT, Theme::COLOR_SURFACE);
+    m_canvas->fillRect(0, 2, Theme::SCREEN_WIDTH, HEADER_HEIGHT, Theme::COLOR_SURFACE);
     m_canvas->setTextSize(1);
     m_canvas->setTextColor(Theme::COLOR_TEXT_PRIMARY);
     m_canvas->setTextDatum(TL_DATUM);
-    m_canvas->drawString("SCANNING", 4, 3);
+    m_canvas->drawString("SCANNING", 4, 5);
 
     // Show progress and elapsed time
     uint8_t progress = m_engine.getScanProgress();
@@ -209,7 +217,7 @@ void TargetRadar::renderScanning() {
     snprintf(progStr, sizeof(progStr), "%ds %d%%", elapsedSec, progress);
     m_canvas->setTextDatum(TR_DATUM);
     m_canvas->setTextColor(Theme::COLOR_ACCENT);
-    m_canvas->drawString(progStr, Theme::SCREEN_WIDTH - 4, 3);
+    m_canvas->drawString(progStr, Theme::SCREEN_WIDTH - 4, 5);
 
     // Progress indicator
     int16_t centerX = Theme::SCREEN_WIDTH / 2;
@@ -250,6 +258,11 @@ void TargetRadar::renderScanning() {
         m_canvas->drawString("Scanning WiFi channels...", centerX, centerY + 30);
     } else if (state == ScanState::BLE_SCANNING) {
         m_canvas->drawString("Scanning BLE devices...", centerX, centerY + 30);
+    } else if (state == ScanState::RECON) {
+        char reconStr[40];
+        size_t targetCount = m_engine.getTargetCount();
+        snprintf(reconStr, sizeof(reconStr), "Recon... discovering clients (%d APs)", (int)targetCount);
+        m_canvas->drawString(reconStr, centerX, centerY + 30);
     } else {
         m_canvas->drawString("Scanning...", centerX, centerY + 30);
     }

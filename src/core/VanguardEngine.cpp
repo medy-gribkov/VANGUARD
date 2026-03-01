@@ -42,7 +42,11 @@ VanguardEngine::VanguardEngine()
     , m_transitionStartMs(0)
     , m_transitionTotalStartMs(0)
     , m_bleInitAttempts(0)
+    , m_reconChannelCount(0)
+    , m_reconCurrentIdx(0)
+    , m_reconWaiting(false)
 {
+    memset(m_reconChannels, 0, sizeof(m_reconChannels));
     m_actionProgress.type = ActionType::NONE;
     m_actionProgress.result = ActionResult::SUCCESS;
     m_actionProgress.packetsSent = 0;
@@ -134,6 +138,11 @@ void VanguardEngine::tick() {
         tickTransition();
     }
 
+    // Handle post-scan recon phase
+    if (m_scanState == ScanState::RECON) {
+        tickRecon();
+    }
+
     // Interpolate BLE scan progress (50% to 99%) + safety timeout
     if (m_scanState == ScanState::BLE_SCANNING) {
         uint32_t elapsed = millis() - m_scanStartMs;
@@ -144,13 +153,11 @@ void VanguardEngine::tick() {
             if (m_onScanProgress) m_onScanProgress(m_scanState, m_scanProgress);
         }
 
-        // Safety timeout: if BLE_SCANNING for > 10 seconds, force complete
+        // Safety timeout: if BLE_SCANNING for > 10 seconds, force recon
         if (elapsed > 10000) {
             if (Serial) Serial.println("[ENGINE] BLE scan safety timeout (10s)");
             BruceBLE::getInstance().stopScan();
-            m_scanState = ScanState::COMPLETE;
-            m_scanProgress = 100;
-            if (m_onScanProgress) m_onScanProgress(m_scanState, m_scanProgress);
+            startRecon();
         }
     }
 }
@@ -210,10 +217,16 @@ void VanguardEngine::stopScan() {
     SystemRequest req;
     req.cmd = SysCommand::WIFI_SCAN_STOP;
     SystemTask::getInstance().sendRequest(req);
-    
+
     req.cmd = SysCommand::BLE_SCAN_STOP;
     SystemTask::getInstance().sendRequest(req);
-    
+
+    // Stop recon if active
+    if (m_scanState == ScanState::RECON) {
+        req.cmd = SysCommand::RECON_STOP;
+        SystemTask::getInstance().sendRequest(req);
+    }
+
     m_scanState = ScanState::IDLE;
     m_combinedScan = false;
 }
@@ -258,8 +271,13 @@ void VanguardEngine::handleSystemEvent(const SystemEvent& evt) {
         case SysEventType::BLE_SCAN_COMPLETE:
         {
             if (Serial) Serial.println("[ENGINE] BLE Scan Complete");
-            m_scanState = ScanState::COMPLETE;
-            m_scanProgress = 100;
+            // If this was a combined scan, start recon for client discovery
+            if (m_combinedScan) {
+                startRecon();
+            } else {
+                m_scanState = ScanState::COMPLETE;
+                m_scanProgress = 100;
+            }
             break;
         }
 
@@ -271,6 +289,14 @@ void VanguardEngine::handleSystemEvent(const SystemEvent& evt) {
                 FeedbackManager::getInstance().pulse(50);
             }
             if (evt.isPointer) delete assoc;
+            break;
+        }
+
+        case SysEventType::RECON_DONE:
+        {
+            int found = (int)(intptr_t)evt.data;
+            if (Serial) Serial.printf("[ENGINE] Recon channel done, %d associations\n", found);
+            m_reconWaiting = false;  // tickRecon() will advance to next channel
             break;
         }
 
@@ -324,7 +350,7 @@ uint8_t VanguardEngine::getScanProgress() const {
 }
 
 uint32_t VanguardEngine::getScanElapsedMs() const {
-    if (m_scanState == ScanState::IDLE || m_scanState == ScanState::COMPLETE) return 0;
+    if (m_scanState == ScanState::IDLE || m_scanState == ScanState::COMPLETE || m_scanState == ScanState::ERROR) return 0;
     return millis() - m_scanStartMs;
 }
 
@@ -412,12 +438,8 @@ void VanguardEngine::processScanResults(int count) {
             m_onScanProgress(m_scanState, m_scanProgress);
         }
     } else {
-        m_scanState = ScanState::COMPLETE;
-        m_scanProgress = 100;
-
-        if (m_onScanProgress) {
-            m_onScanProgress(m_scanState, m_scanProgress);
-        }
+        // WiFi-only scan done, start recon for client discovery
+        startRecon();
     }
 }
 
@@ -494,13 +516,9 @@ void VanguardEngine::tickTransition() {
                     m_scanProgress = 49;
                     if (Serial) Serial.println("[SCAN] BLE init SUCCESS");
                 } else if (m_bleInitAttempts >= 3) {
-                    // Failed after 3 attempts, complete without BLE
-                    if (Serial) Serial.println("[SCAN] BLE init FAILED after 3 attempts - BLE unavailable");
-                    m_scanState = ScanState::COMPLETE;
-                    m_scanProgress = 100;
-                    if (m_onScanProgress) {
-                        m_onScanProgress(m_scanState, m_scanProgress);
-                    }
+                    // Failed after 3 attempts, still do recon with WiFi results
+                    if (Serial) Serial.println("[SCAN] BLE init FAILED after 3 attempts, starting recon");
+                    startRecon();
                 } else {
                     // Wait before retry
                     m_transitionStep = 100;  // Wait state
@@ -530,21 +548,15 @@ void VanguardEngine::tickTransition() {
 
                 ble.onScanComplete([this](int count) {
                     if (Serial) Serial.printf("[ENGINE] BLE scan complete: %d devices\n", count);
-                    m_scanState = ScanState::COMPLETE;
-                    m_scanProgress = 100;
-                    if (m_onScanProgress) m_onScanProgress(m_scanState, m_scanProgress);
+                    startRecon();
                 });
 
                 bool scanOk = ble.beginScan(3000);
 
                 if (!scanOk) {
-                    // BLE scan failed (radio busy or init error), complete with WiFi-only results
-                    if (Serial) Serial.println("[SCAN] BLE scan start FAILED, completing WiFi-only");
-                    m_scanState = ScanState::COMPLETE;
-                    m_scanProgress = 100;
-                    if (m_onScanProgress) {
-                        m_onScanProgress(m_scanState, m_scanProgress);
-                    }
+                    // BLE scan failed, still do recon with WiFi-only results
+                    if (Serial) Serial.println("[SCAN] BLE scan start FAILED, starting recon");
+                    startRecon();
                     break;
                 }
 
@@ -579,14 +591,131 @@ void VanguardEngine::tickTransition() {
     if (m_scanState == ScanState::TRANSITIONING_TO_BLE) {
         uint32_t totalElapsed = millis() - m_transitionTotalStartMs;
         if (totalElapsed > 5000) {
-            if (Serial) Serial.println("[SCAN] Total timeout (5s), completing without BLE");
-            m_scanState = ScanState::COMPLETE;
-            m_scanProgress = 100;
-            if (m_onScanProgress) {
-                m_onScanProgress(m_scanState, m_scanProgress);
+            if (Serial) Serial.println("[SCAN] Total timeout (5s), starting recon");
+            startRecon();
+        }
+    }
+}
+
+// =============================================================================
+// POST-SCAN RECON (Client Discovery)
+// =============================================================================
+
+void VanguardEngine::startRecon() {
+    // Collect unique channels from discovered WiFi APs, sorted by strongest RSSI
+    const auto& targets = m_targetTable.getAll();
+
+    // Build channel list from APs, prioritizing strongest signals
+    struct ChannelInfo {
+        uint8_t channel;
+        int8_t bestRssi;
+    };
+    ChannelInfo channels[14];
+    uint8_t channelCount = 0;
+
+    for (const auto& t : targets) {
+        if (t.type != TargetType::ACCESS_POINT) continue;
+        if (t.channel < 1 || t.channel > 14) continue;
+
+        // Check if channel already tracked
+        bool found = false;
+        for (uint8_t i = 0; i < channelCount; i++) {
+            if (channels[i].channel == t.channel) {
+                if (t.rssi > channels[i].bestRssi) channels[i].bestRssi = t.rssi;
+                found = true;
+                break;
+            }
+        }
+        if (!found && channelCount < 14) {
+            channels[channelCount].channel = t.channel;
+            channels[channelCount].bestRssi = t.rssi;
+            channelCount++;
+        }
+    }
+
+    if (channelCount == 0) {
+        // No APs found, skip recon
+        if (Serial) Serial.println("[ENGINE] No APs for recon, completing scan");
+        m_scanState = ScanState::COMPLETE;
+        m_scanProgress = 100;
+        if (m_onScanProgress) m_onScanProgress(m_scanState, m_scanProgress);
+        return;
+    }
+
+    // Sort channels by RSSI (strongest first) so we discover clients on best APs first
+    for (uint8_t i = 0; i < channelCount - 1; i++) {
+        for (uint8_t j = i + 1; j < channelCount; j++) {
+            if (channels[j].bestRssi > channels[i].bestRssi) {
+                ChannelInfo tmp = channels[i];
+                channels[i] = channels[j];
+                channels[j] = tmp;
             }
         }
     }
+
+    // Cap at 8 channels to keep recon under 16 seconds
+    if (channelCount > 8) channelCount = 8;
+
+    m_reconChannelCount = channelCount;
+    m_reconCurrentIdx = 0;
+    m_reconWaiting = false;
+    for (uint8_t i = 0; i < channelCount; i++) {
+        m_reconChannels[i] = channels[i].channel;
+    }
+
+    m_scanState = ScanState::RECON;
+    m_scanProgress = 90;  // Recon is 90-99%
+
+    if (Serial) {
+        Serial.printf("[ENGINE] Starting recon on %d channels:", channelCount);
+        for (uint8_t i = 0; i < channelCount; i++) Serial.printf(" %d", m_reconChannels[i]);
+        Serial.println();
+    }
+
+    if (m_onScanProgress) m_onScanProgress(m_scanState, m_scanProgress);
+
+    // Send first channel request
+    SystemRequest req;
+    req.cmd = SysCommand::RECON_CHANNEL;
+    req.payload = (void*)(uintptr_t)m_reconChannels[0];
+    SystemTask::getInstance().sendRequest(req);
+    m_reconWaiting = true;
+}
+
+void VanguardEngine::tickRecon() {
+    if (m_reconWaiting) return;  // Still waiting for RECON_DONE from SystemTask
+
+    // Advance to next channel
+    m_reconCurrentIdx++;
+
+    if (m_reconCurrentIdx >= m_reconChannelCount) {
+        // All channels scanned, complete
+        if (Serial) Serial.println("[ENGINE] Recon complete");
+
+        // Stop recon on SystemTask side
+        SystemRequest req;
+        req.cmd = SysCommand::RECON_STOP;
+        SystemTask::getInstance().sendRequest(req);
+
+        m_scanState = ScanState::COMPLETE;
+        m_scanProgress = 100;
+        if (m_onScanProgress) m_onScanProgress(m_scanState, m_scanProgress);
+        return;
+    }
+
+    // Update progress (90-99 range across channels)
+    m_scanProgress = 90 + (uint8_t)((m_reconCurrentIdx * 9) / m_reconChannelCount);
+    if (m_onScanProgress) m_onScanProgress(m_scanState, m_scanProgress);
+
+    // Send next channel
+    if (Serial) Serial.printf("[ENGINE] Recon channel %d/%d (ch %d)\n",
+        m_reconCurrentIdx + 1, m_reconChannelCount, m_reconChannels[m_reconCurrentIdx]);
+
+    SystemRequest req;
+    req.cmd = SysCommand::RECON_CHANNEL;
+    req.payload = (void*)(uintptr_t)m_reconChannels[m_reconCurrentIdx];
+    SystemTask::getInstance().sendRequest(req);
+    m_reconWaiting = true;
 }
 
 // =============================================================================

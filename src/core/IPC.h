@@ -24,7 +24,11 @@ enum class SysCommand : uint8_t {
     // Attacks / Actions
     ACTION_START,         // Payload: ActionRequest*
     ACTION_STOP,
-    
+
+    // Recon (post-scan client discovery)
+    RECON_CHANNEL,        // Payload: uint32_t channel number
+    RECON_STOP,
+
     // System
     SYSTEM_SHUTDOWN
 };
@@ -66,6 +70,9 @@ enum class SysEventType : uint8_t {
     ACTION_PROGRESS,      // Payload: ActionProgress*
     ACTION_COMPLETE,      // Payload: ActionResult
     
+    // Recon
+    RECON_DONE,           // Payload: int associations found on this channel
+
     // Errors
     ERROR_OCCURRED        // Payload: char* message
 };

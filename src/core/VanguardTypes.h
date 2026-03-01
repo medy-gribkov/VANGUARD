@@ -71,6 +71,7 @@ enum class ScanState : uint8_t {
     WIFI_SCANNING,
     TRANSITIONING_TO_BLE,  // Non-blocking WiFi→BLE transition
     BLE_SCANNING,
+    RECON,                 // Post-scan client discovery via promiscuous listen
     COMPLETE,
     ERROR
 };
@@ -283,10 +284,13 @@ struct Target {
  */
 struct AvailableAction {
     ActionType   type;
-    const char*  label;        // Human-readable name
-    const char*  description;  // One-line explanation
-    bool         isDestructive; // Requires confirmation?
+    const char*  label;          // Human-readable name
+    const char*  description;    // One-line explanation
+    bool         isDestructive;  // Requires confirmation?
     bool         requiresClients; // Only valid if target has clients
+    uint8_t      priority;       // Lower = shown first (10=high impact, 50=utility)
+    bool         enabled;        // false = grayed out, can't select
+    const char*  disabledReason; // Why it's disabled (null if enabled)
 };
 
 /**
@@ -298,6 +302,7 @@ struct ActionProgress {
     uint32_t     startTimeMs;
     uint32_t     elapsedMs;
     uint32_t     packetsSent;  // For attacks that send packets
+    uint32_t     timeoutMs;   // Expected timeout for progress bar
     char         statusText[32]; // Fixed buffer, no dangling pointers
 };
 

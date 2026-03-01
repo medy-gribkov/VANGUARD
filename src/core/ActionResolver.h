@@ -82,6 +82,7 @@ private:
         TargetType   requiredTargetType;  // UNKNOWN = any
         bool         requiresClients;
         SecurityType incompatibleSecurity; // UNKNOWN = compatible with all
+        uint8_t      priority;             // Lower = shown first
     };
 
     static const ActionDefinition s_actionDefs[];

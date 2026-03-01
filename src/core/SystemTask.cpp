@@ -20,7 +20,10 @@ SystemTask::SystemTask() :
     m_currentAction(ActionType::NONE),
     m_actionStartTime(0),
     m_lastProgressTime(0),
-    m_droppedEvents(0)
+    m_droppedEvents(0),
+    m_lastError(nullptr),
+    m_reconActive(false),
+    m_reconStartTime(0)
 {
     // Create Queues
     // Request Queue: UI -> System (Capacity 10)
@@ -126,9 +129,20 @@ void SystemTask::run() {
              uint32_t timeout = getActionTimeout(m_currentAction);
              if (!completed && timeout > 0 && (now - m_actionStartTime > timeout)) {
                  completed = true;
-                 result = ActionResult::SUCCESS;
                  uint32_t packets = BruceWiFi::getInstance().getPacketsSent() + BruceBLE::getInstance().getAdvertisementsSent();
-                 statusMsg = getCompletionMessage(m_currentAction, packets, now - m_actionStartTime);
+                 // Listen-only actions succeed even with 0 packets sent
+                 bool isListenAction = (m_currentAction == ActionType::MONITOR ||
+                                        m_currentAction == ActionType::CAPTURE_HANDSHAKE ||
+                                        m_currentAction == ActionType::CAPTURE_PMKID ||
+                                        m_currentAction == ActionType::EVIL_TWIN ||
+                                        m_currentAction == ActionType::BLE_SKIMMER_DETECT);
+                 if (packets == 0 && !isListenAction) {
+                     result = ActionResult::FAILED_HARDWARE;
+                     statusMsg = "No packets transmitted";
+                 } else {
+                     result = ActionResult::SUCCESS;
+                     statusMsg = getCompletionMessage(m_currentAction, packets, now - m_actionStartTime);
+                 }
              }
 
              if (completed) {
@@ -145,6 +159,7 @@ void SystemTask::run() {
                  finalProg->elapsedMs = now - m_actionStartTime;
                  finalProg->result = result;
                  finalProg->packetsSent = BruceWiFi::getInstance().getPacketsSent() + BruceBLE::getInstance().getAdvertisementsSent();
+                 finalProg->timeoutMs = getActionTimeout(m_currentAction);
                  strncpy(finalProg->statusText, statusMsg ? statusMsg : "", sizeof(finalProg->statusText) - 1);
                  finalProg->statusText[sizeof(finalProg->statusText) - 1] = '\0';
                  sendEvent(SysEventType::ACTION_PROGRESS, finalProg, sizeof(ActionProgress), true);
@@ -206,11 +221,20 @@ void SystemTask::run() {
                   prog->statusText[sizeof(prog->statusText) - 1] = '\0';
 
                   prog->startTimeMs = m_actionStartTime;
+                  prog->timeoutMs = getActionTimeout(m_currentAction);
                   sendEvent(SysEventType::ACTION_PROGRESS, prog, sizeof(ActionProgress), true);
                   m_lastProgressTime = now;
              }
         }
         
+        // 4. Recon auto-complete after 2 seconds per channel
+        if (m_reconActive && (now - m_reconStartTime > 2000)) {
+            BruceWiFi::getInstance().stopHardwareActivities();
+            m_reconActive = false;
+            sendEvent(SysEventType::RECON_DONE, nullptr, 0, false);
+            if (Serial) Serial.println("[SYSTEM] Recon channel done");
+        }
+
         // Feed Watchdog for Core 0
         esp_task_wdt_reset();
 
@@ -360,6 +384,12 @@ void SystemTask::handleRequest(const SystemRequest& req) {
         case SysCommand::ACTION_STOP:
             handleActionStop();
             break;
+        case SysCommand::RECON_CHANNEL:
+            handleReconChannel((uint32_t)(uintptr_t)req.payload);
+            break;
+        case SysCommand::RECON_STOP:
+            handleReconStop();
+            break;
         case SysCommand::SYSTEM_SHUTDOWN:
             RadioWarden::getInstance().releaseRadio();
             break;
@@ -460,86 +490,133 @@ void SystemTask::handleActionStart(ActionRequest* req) {
         m_currentAction = type;
         m_actionStartTime = millis();
         m_lastProgressTime = millis();
+        m_lastError = nullptr;
     } else {
         m_actionActive = false;
-        sendEvent(SysEventType::ERROR_OCCURRED, (void*)"Hardware init failed", 0, false);
+        const char* errMsg = m_lastError ? m_lastError : "Hardware init failed";
+        sendEvent(SysEventType::ERROR_OCCURRED, (void*)errMsg, 0, false);
+        m_lastError = nullptr;
     }
 }
 
 bool SystemTask::startWiFiAction(ActionType type, Target& t, ActionRequest* req) {
     BruceWiFi& wifi = BruceWiFi::getInstance();
-    if (!wifi.init()) return false;
+    if (!wifi.init()) {
+        if (Serial) Serial.println("[SYSTEM] WiFi init FAILED");
+        m_lastError = "WiFi radio unavailable";
+        return false;
+    }
 
+    bool ok = false;
     switch (type) {
         case ActionType::DEAUTH_SINGLE: {
             bool specificClient = false;
             for (int i = 0; i < 6; i++) {
                 if (req->stationMac[i] != 0) { specificClient = true; break; }
             }
-            return specificClient
+            ok = specificClient
                 ? wifi.deauthStation(req->stationMac, t.bssid, t.channel)
                 : wifi.deauthAll(t.bssid, t.channel);
+            if (Serial) Serial.printf("[SYSTEM] deauth ch%d -> %s\n", t.channel, ok ? "OK" : "FAIL");
+            break;
         }
         case ActionType::DEAUTH_ALL:
-            return wifi.deauthAll(t.bssid, t.channel);
+            ok = wifi.deauthAll(t.bssid, t.channel);
+            if (Serial) Serial.printf("[SYSTEM] deauthAll ch%d -> %s\n", t.channel, ok ? "OK" : "FAIL");
+            break;
 
         case ActionType::CAPTURE_HANDSHAKE: {
             char filename[64];
             snprintf(filename, sizeof(filename), "/captures/hs_%02X%02X%02X.pcap",
                      t.bssid[3], t.bssid[4], t.bssid[5]);
             wifi.setPcapLogging(true, filename);
-            return wifi.captureHandshake(t.bssid, t.channel, true);
+            ok = wifi.captureHandshake(t.bssid, t.channel, true);
+            if (Serial) Serial.printf("[SYSTEM] captureHandshake ch%d -> %s\n", t.channel, ok ? "OK" : "FAIL");
+            break;
         }
         case ActionType::CAPTURE_PMKID: {
             char filename[64];
             snprintf(filename, sizeof(filename), "/captures/pmkid_%02X%02X%02X.pcap",
                      t.bssid[3], t.bssid[4], t.bssid[5]);
             wifi.setPcapLogging(true, filename);
-            return wifi.captureHandshake(t.bssid, t.channel, false);
+            ok = wifi.captureHandshake(t.bssid, t.channel, false);
+            if (Serial) Serial.printf("[SYSTEM] capturePMKID ch%d -> %s\n", t.channel, ok ? "OK" : "FAIL");
+            break;
         }
         case ActionType::BEACON_FLOOD: {
             static const char* fakeSSIDs[] = {
                 "Free WiFi", "xfinity", "ATT-WiFi", "NETGEAR",
                 "linksys", "FBI Van", "Virus.exe", "GetYourOwn"
             };
-            return wifi.beaconFlood(fakeSSIDs, 8, t.channel);
+            ok = wifi.beaconFlood(fakeSSIDs, 8, t.channel);
+            if (Serial) Serial.printf("[SYSTEM] beaconFlood ch%d -> %s\n", t.channel, ok ? "OK" : "FAIL");
+            break;
         }
         case ActionType::PROBE_FLOOD:
-            return wifi.startProbeFlood(t.channel);
+            ok = wifi.startProbeFlood(t.channel);
+            if (Serial) Serial.printf("[SYSTEM] probeFlood ch%d -> %s\n", t.channel, ok ? "OK" : "FAIL");
+            break;
 
         case ActionType::MONITOR:
-            return wifi.startMonitor(t.channel);
+            ok = wifi.startMonitor(t.channel);
+            if (Serial) Serial.printf("[SYSTEM] monitor ch%d -> %s\n", t.channel, ok ? "OK" : "FAIL");
+            break;
 
         default:
+            if (Serial) Serial.printf("[SYSTEM] Unknown WiFi action: %d\n", (int)type);
+            m_lastError = "Unknown WiFi action";
             return false;
     }
+    if (!ok) m_lastError = "WiFi attack setup failed";
+    return ok;
 }
 
 bool SystemTask::startBLEAction(ActionType type) {
     BruceBLE& ble = BruceBLE::getInstance();
-    if (!ble.init()) return false;
+    if (!ble.init()) {
+        if (Serial) Serial.println("[SYSTEM] BLE init FAILED");
+        m_lastError = "BLE init failed";
+        return false;
+    }
 
+    bool ok = false;
     switch (type) {
         case ActionType::BLE_SPAM:
-            return ble.startSpam(BLESpamType::RANDOM);
+            ok = ble.startSpam(BLESpamType::RANDOM);
+            if (Serial) Serial.printf("[SYSTEM] BLE spam -> %s\n", ok ? "OK" : "FAIL");
+            break;
         case ActionType::BLE_SOUR_APPLE:
-            return ble.startSpam(BLESpamType::SOUR_APPLE);
+            ok = ble.startSpam(BLESpamType::SOUR_APPLE);
+            if (Serial) Serial.printf("[SYSTEM] Sour Apple -> %s\n", ok ? "OK" : "FAIL");
+            break;
         case ActionType::BLE_SKIMMER_DETECT:
             ble.beginScan(5000);
-            return true;
+            ok = true;
+            if (Serial) Serial.println("[SYSTEM] Skimmer detect scan started");
+            break;
         default:
+            if (Serial) Serial.printf("[SYSTEM] Unknown BLE action: %d\n", (int)type);
+            m_lastError = "Unknown BLE action";
             return false;
     }
+    if (!ok) m_lastError = "BLE attack setup failed";
+    return ok;
 }
 
 void SystemTask::startIRAction(ActionType type) {
     BruceIR& ir = BruceIR::getInstance();
-    if (!ir.init()) return;
+    if (!ir.init()) {
+        if (Serial) Serial.println("[SYSTEM] IR init FAILED");
+        sendEvent(SysEventType::ERROR_OCCURRED, (void*)"IR hardware unavailable", 0, false);
+        return;
+    }
 
     if (type == ActionType::IR_REPLAY) {
         ir.replayLast();
+        if (Serial) Serial.println("[SYSTEM] IR replay sent");
     } else {
         ir.sendTVBGone();
+        if (Serial) Serial.println("[SYSTEM] TV-B-Gone sent");
     }
 
     const char* msg = (type == ActionType::IR_REPLAY) ? "IR signal sent" : "TV-B-Gone complete";
@@ -551,6 +628,7 @@ void SystemTask::startIRAction(ActionType type) {
     prog->result = ActionResult::SUCCESS;
     prog->elapsedMs = 0;
     prog->packetsSent = 1;
+    prog->timeoutMs = 0;
     strncpy(prog->statusText, msg, sizeof(prog->statusText) - 1);
     prog->statusText[sizeof(prog->statusText) - 1] = '\0';
     sendEvent(SysEventType::ACTION_PROGRESS, prog, sizeof(ActionProgress), true);
@@ -559,7 +637,10 @@ void SystemTask::startIRAction(ActionType type) {
 bool SystemTask::startPortalAction(Target& t) {
     EvilPortal& portal = EvilPortal::getInstance();
     if (portal.isRunning()) portal.stop();
-    return portal.start(t.ssid, t.channel, PortalTemplate::GENERIC_WIFI);
+    bool ok = portal.start(t.ssid, t.channel, PortalTemplate::GENERIC_WIFI);
+    if (Serial) Serial.printf("[SYSTEM] Evil Twin '%s' ch%d -> %s\n", t.ssid, t.channel, ok ? "OK" : "FAIL");
+    if (!ok) m_lastError = "Portal start failed";
+    return ok;
 }
 
 void SystemTask::handleActionStop() {
@@ -567,6 +648,43 @@ void SystemTask::handleActionStop() {
     BruceBLE::getInstance().stopHardwareActivities();
     m_actionActive = false;
     sendEvent(SysEventType::ACTION_COMPLETE, (void*)(intptr_t)ActionResult::STOPPED, 0, false);
+}
+
+// =============================================================================
+// RECON (post-scan client discovery)
+// =============================================================================
+
+void SystemTask::handleReconChannel(uint32_t channel) {
+    if (Serial) Serial.printf("[SYSTEM] Recon on channel %u\n", channel);
+
+    BruceWiFi& wifi = BruceWiFi::getInstance();
+    if (!wifi.init()) {
+        if (Serial) Serial.println("[SYSTEM] Recon: WiFi init failed");
+        sendEvent(SysEventType::RECON_DONE, (void*)(intptr_t)0, 0, false);
+        return;
+    }
+
+    // Wire up association callback (may already be set from scan)
+    wifi.onAssociation([this](const uint8_t* client, const uint8_t* bssid) {
+        AssociationEvent* evt = new AssociationEvent();
+        if (!evt) return;
+        memcpy(evt->bssid, bssid, 6);
+        memcpy(evt->station, client, 6);
+        sendEvent(SysEventType::ASSOCIATION_FOUND, evt, sizeof(AssociationEvent), true);
+    });
+
+    // Start promiscuous monitor on target channel
+    wifi.startMonitor((uint8_t)channel);
+    m_reconActive = true;
+    m_reconStartTime = millis();
+}
+
+void SystemTask::handleReconStop() {
+    if (m_reconActive) {
+        BruceWiFi::getInstance().stopHardwareActivities();
+        m_reconActive = false;
+        if (Serial) Serial.println("[SYSTEM] Recon stopped");
+    }
 }
 
 } // namespace Vanguard

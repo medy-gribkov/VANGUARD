@@ -35,7 +35,7 @@ jobs:
         run: pio test -e native --verbose
 
       - name: Create Release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: |
             .pio/build/m5stack-cardputer/firmware.bin
